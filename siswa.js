@@ -446,6 +446,7 @@ async function rUjian() {
   hentikanTimerCBT();
   document.body.classList.remove("mode-cbt");
   AC.berhenti();
+  acKeluarFs(); // kembali ke daftar ujian: layar normal lagi
   acMuatPengaturan(); // pengaturan anti curang dimuat lebih awal (tanpa menunggu)
 
   await muatDataSiswa();
@@ -1627,6 +1628,7 @@ async function tampilHalamanSiswa() {
     hentikanTimerCBT();
     document.body.classList.remove("mode-cbt");
   }
+  if (info.key !== "ujian") acKeluarFs(); // di luar menu ujian layar selalu normal
 
   $("#judul-halaman").textContent = info.judul;
   $("#subjudul-halaman").textContent = info.sub || "";

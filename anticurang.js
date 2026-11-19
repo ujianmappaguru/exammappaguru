@@ -487,7 +487,10 @@ AC.prasyarat = async function (ujianId) {
 };
 
 AC.mintaLayarPenuh = function () {
-  if (AC.cfg && AC.cfg.aktif && AC.cfg.wajib_layar_penuh && acFsDidukung() && !acStandalone()) acMintaFs();
+  // Aplikasi terpasang (PWA) di Android juga ikut diminta layar penuh sungguhan agar bilah status
+  // tersembunyi selama ujian. Di mode terpasang ini hanya tampilan: tidak dipaksa dan tidak dihitung
+  // pelanggaran bila siswa keluar (AC.perluFs tetap false). iPhone tidak mendukung, jadi dilewati.
+  if (AC.cfg && AC.cfg.aktif && AC.cfg.wajib_layar_penuh && acFsDidukung()) acMintaFs();
 };
 
 AC.ringkasTataTertib = function () {
