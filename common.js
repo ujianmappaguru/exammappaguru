@@ -425,3 +425,52 @@ document.addEventListener("click", (e) => {
   e.stopPropagation();
   bukaLightbox(img.src);
 }, true);
+
+// =====================================================================
+//  ZOOM DALAM APLIKASI
+//  Memperbesar/memperkecil isi halaman lewat CSS (properti zoom) pada area
+//  konten saja. Ukuran jendela browser TIDAK berubah, jadi pendeteksi
+//  "layar terbagi" di anticurang.js tidak terpicu. Hanya aktif di halaman
+//  yang punya elemen #zoom-slot (siswa.html, admin.html, guru.html).
+// =====================================================================
+const ZOOM = { langkah: [0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2], kunci: "zoom_app", nilai: 1 };
+
+ZOOM.html = () => `<div class="zoom-ctrl" role="group" aria-label="Perbesar atau perkecil tampilan">
+  <button type="button" data-zoom="-1" title="Perkecil" aria-label="Perkecil">&minus;</button>
+  <button type="button" data-zoom="0" class="zoom-label" data-zoom-label title="Kembalikan ke 100%">100%</button>
+  <button type="button" data-zoom="1" title="Perbesar" aria-label="Perbesar">+</button>
+</div>`;
+
+ZOOM.terapkan = () => {
+  document.documentElement.style.setProperty("--zoom-app", String(ZOOM.nilai));
+  const i = ZOOM.langkah.indexOf(ZOOM.nilai);
+  const lb = document.querySelector("[data-zoom-label]");
+  if (lb) lb.textContent = Math.round(ZOOM.nilai * 100) + "%";
+  const min = document.querySelector('[data-zoom="-1"]');
+  const plus = document.querySelector('[data-zoom="1"]');
+  if (min) min.disabled = i <= 0;
+  if (plus) plus.disabled = i >= ZOOM.langkah.length - 1;
+};
+
+ZOOM.ubah = (arah) => {
+  const i = ZOOM.langkah.indexOf(ZOOM.nilai);
+  const baru = arah === 0 ? ZOOM.langkah.indexOf(1) : Math.min(ZOOM.langkah.length - 1, Math.max(0, i + arah));
+  ZOOM.nilai = ZOOM.langkah[baru];
+  try { localStorage.setItem(ZOOM.kunci, String(ZOOM.nilai)); } catch (_) { /* abaikan */ }
+  ZOOM.terapkan();
+};
+
+(function zoomMulai() {
+  const slot = document.getElementById("zoom-slot");
+  if (!slot) return; // halaman lain (login) tidak terpengaruh
+  slot.innerHTML = ZOOM.html();
+  try {
+    const v = parseFloat(localStorage.getItem(ZOOM.kunci));
+    if (ZOOM.langkah.includes(v)) ZOOM.nilai = v;
+  } catch (_) { /* abaikan */ }
+  ZOOM.terapkan();
+  slot.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-zoom]");
+    if (b) ZOOM.ubah(Number(b.dataset.zoom));
+  });
+})();
