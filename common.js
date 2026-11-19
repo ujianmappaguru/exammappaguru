@@ -5,6 +5,21 @@
 
 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
+// Keluar yang pasti menghapus sesi di perangkat ini.
+// signOut() biasa (scope global) memanggil server dulu; bila jaringan lambat/putus
+// atau server error, library mengembalikan error TANPA menghapus sesi lokal,
+// sehingga halaman login mengira pengguna masih masuk dan melempar balik ke aplikasi.
+// scope "local" hanya menghapus sesi di perangkat (tanpa panggilan jaringan), lalu
+// kunci sesi di storage dihapus paksa sebagai pengaman.
+async function keluarAman() {
+  try { await sb.auth.signOut({ scope: "local" }); } catch (_) { /* lanjut hapus manual */ }
+  try {
+    [localStorage, sessionStorage].forEach((st) => {
+      Object.keys(st).filter((k) => /^sb-.+-auth-token/.test(k)).forEach((k) => st.removeItem(k));
+    });
+  } catch (_) { /* storage tidak tersedia */ }
+}
+
 function configBelumDiisi() {
   return !CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL.includes("XXXX") ||
          !CONFIG.SUPABASE_ANON_KEY || CONFIG.SUPABASE_ANON_KEY.startsWith("ISI_");

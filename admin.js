@@ -1627,7 +1627,7 @@ function bangunMenu() {
   let profil = null;
   try { profil = await ambilProfilSaya(); } catch (e) { /* dianggap belum login */ }
   if (!profil || profil.peran !== PANEL || !profil.aktif) {
-    await sb.auth.signOut();
+    await keluarAman();
     location.replace("index.html");
     return;
   }
@@ -1645,7 +1645,8 @@ function bangunMenu() {
   if (av && profil.nama) av.textContent = profil.nama.trim().charAt(0).toUpperCase();
   bangunMenu();
   $("#btn-keluar").onclick = async () => {
-    S.kartu = []; await sb.auth.signOut(); location.replace("index.html");
+    if (!await konfirmasi("Apakah Anda yakin ingin keluar dari aplikasi?", { judul: "Keluar", ya: "Ya, keluar", bahaya: true })) return;
+    S.kartu = []; await keluarAman(); location.replace("index.html");
   };
   $("#btn-menu").onclick = () => $("#app").classList.add("buka");
   $("#tirai").onclick = () => $("#app").classList.remove("buka");

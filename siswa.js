@@ -1663,7 +1663,7 @@ function bangunMenuSiswa() {
 
   if (!profil || profil.peran !== "siswa" || !profil.aktif) {
     bersihkanSemuaCache();
-    await sb.auth.signOut();
+    await keluarAman();
     location.replace("index.html");
     return;
   }
@@ -1699,9 +1699,14 @@ function bangunMenuSiswa() {
 
   bangunMenuSiswa();
   $("#btn-keluar").onclick = async () => {
+    const sedangUjian = CBT.aktif && CBT.ujian;
+    const pesan = sedangUjian
+      ? "Ujian Anda <b>sedang berlangsung</b>. Jika keluar sekarang, ujian belum dikumpulkan dan waktu tetap berjalan. Yakin ingin keluar?"
+      : "Apakah Anda yakin ingin keluar dari aplikasi?";
+    if (!await konfirmasi(pesan, { judul: "Keluar", ya: "Ya, keluar", bahaya: true })) return;
     AC.berhenti();
     bersihkanSemuaCache();
-    await sb.auth.signOut();
+    await keluarAman();
     location.replace("index.html");
   };
   $("#btn-menu").onclick = () => $("#app").classList.add("buka");

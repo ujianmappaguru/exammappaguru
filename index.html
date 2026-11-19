@@ -213,7 +213,7 @@ $("#lihat").onclick = () => {
   p.type = p.type === "password" ? "text" : "password";
   $("#lihat").textContent = p.type === "password" ? "Tampilkan" : "Sembunyikan";
 };
-$("#keluar").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+$("#keluar").onclick = async () => { await keluarAman(); location.reload(); };
 
 $("#form").onsubmit = async (e) => {
   e.preventDefault();
@@ -234,8 +234,8 @@ $("#form").onsubmit = async (e) => {
       return tampilPesan("Username atau password salah.");
     }
     const profil = await ambilProfilSaya();
-    if (!profil) { await sb.auth.signOut(); return tampilPesan("Akun belum terdaftar di sekolah. Hubungi admin."); }
-    if (!profil.aktif) { await sb.auth.signOut(); return tampilPesan("Akun ini dinonaktifkan. Hubungi admin sekolah."); }
+    if (!profil) { await keluarAman(); return tampilPesan("Akun belum terdaftar di sekolah. Hubungi admin."); }
+    if (!profil.aktif) { await keluarAman(); return tampilPesan("Akun ini dinonaktifkan. Hubungi admin sekolah."); }
     arahkan(profil);
   } catch (err) {
     tampilPesan("Tidak bisa terhubung ke server. Periksa koneksi internet.");
