@@ -1895,3 +1895,10 @@ body:not(.mode-cbt) .app{grid-template-columns:min(calc(260px * var(--zoom-app))
 .zoom-ctrl button:disabled{opacity:.35;cursor:default}
 .zoom-ctrl .zoom-label{font-size:.75rem;min-width:3rem;border-left:1px solid var(--garis-2);border-right:1px solid var(--garis-2)}
 @media(max-width:600px){.zoom-ctrl button{padding:.3rem .45rem;min-width:1.8rem}.zoom-ctrl .zoom-label{min-width:2.6rem}}
+/* bar atas di HP: judul boleh dipotong (...) supaya tombol zoom tidak terdorong keluar layar */
+@media(max-width:900px){
+  .bar{gap:.5rem}
+  .bar-judul{flex:1 1 0;min-width:0}
+  .bar-judul h1,.bar-judul .bar-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar-kanan{flex:none}
+}
