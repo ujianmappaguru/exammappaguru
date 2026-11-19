@@ -97,6 +97,7 @@ async function bukaPenilaian(hasilId, siswa, ujian, setelahSimpan) {
     ],
   });
 
+  m.el.querySelector(".modal").classList.add("modal-nilai"); // penanda untuk tata letak HP
   const kartuEl = () => [...m.body.querySelectorAll(".pn-kartu")];
   const bacaSkor = (k) => {
     const el = k.querySelector(".pn-skor");

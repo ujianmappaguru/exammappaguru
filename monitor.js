@@ -1,0 +1,416 @@
+"use strict";
+// =====================================================================
+//  ADMIN & GURU - MONITOR UJIAN (#monitor) + PENGATURAN ANTI CURANG
+//
+//  Monitor: satu panggilan ringan (monitor_ujian) tiap 15-60 detik, hanya
+//  saat halaman terbuka dan tab terlihat. Log rinci per siswa baru diambil
+//  saat tombol "Rincian" diklik.
+//
+//  Pengaturan (khusus admin): kartu "Anti curang & lokasi ujian" yang
+//  disisipkan ke menu Pengaturan oleh cetak.js.
+//
+//  Butuh 22_anti_curang_monitor.sql sudah dijalankan di Supabase.
+// =====================================================================
+const MN = {
+  ujianId: "", kelas: "", status: "", cari: "", urut: "kelas", jeda: 20,
+  ujian: [], data: null, t0: 0, timer: null, memuat: false,
+};
+
+const mnEpochSekarang = () => (MN.data ? MN.data.server_epoch + (performance.now() - MN.t0) / 1000 : Date.now() / 1000);
+const mnWaktu = (t) => (t ? fmtWITA(t, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "-");
+const mnJam = (epoch) => (epoch ? fmtWITA(new Date(epoch * 1000), { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-");
+
+const MN_LABEL = {
+  pindah_aplikasi: ["Pindah aplikasi / tab", "off"],
+  kehilangan_fokus: ["Jendela kehilangan fokus", "off"],
+  keluar_layar_penuh: ["Keluar layar penuh", "off"],
+  layar_terbagi: ["Layar terbagi / split-screen", "off"],
+  keluar_area: ["Keluar area ujian", "off"],
+  lompat_lokasi: ["Lokasi melompat (curiga fake GPS)", "off"],
+  gps_mati: ["GPS tidak terbaca", "off"],
+  lokasi_ditolak: ["Lokasi ditolak saat mulai", "warn"],
+  ganti_perangkat: ["Ujian dibuka di perangkat lain", "warn"],
+  salin_tempel: ["Mencoba salin / tempel", "warn"],
+  cetak: ["Mencoba cetak / screenshot", "warn"],
+  kembali_aktif: ["Kembali ke halaman ujian", "ok"],
+  ke_daftar: ["Keluar ke daftar ujian", "warn"],
+  offline: ["Koneksi terputus", "warn"],
+  reset: ["Pelanggaran direset pengawas", "ok"],
+};
+
+function mnStatusAktivitas(b) {
+  // Hanya relevan saat siswa sedang mengerjakan.
+  if (b.status !== "mengerjakan") return { k: "-", teks: "-" };
+  if (!b.aktif_epoch) return { k: "putus", teks: "Belum ada laporan" };
+  const selang = Math.max(0, mnEpochSekarang() - b.aktif_epoch);
+  const iv = (MN.data && MN.data.anticurang && MN.data.anticurang.interval) || 45;
+  const menit = Math.round(selang / 60);
+  if (selang <= iv * 2 + 20) return { k: "aktif", teks: "Aktif" };
+  if (selang <= iv * 6) return { k: "senyap", teks: `Senyap ${menit < 1 ? "<1" : menit} mnt` };
+  return { k: "putus", teks: `Terputus ${menit} mnt` };
+}
+
+async function rMonitor() {
+  await muatMapel();
+  const { data, error } = await sb.from("ujian")
+    .select("id,judul,jenis_ujian,mapel_id,waktu_mulai,waktu_selesai,aktif,durasi_menit")
+    .order("waktu_mulai", { ascending: false }).limit(300);
+  if (error) throw error;
+  MN.ujian = data || [];
+
+  if (!MN.ujian.length) {
+    konten().innerHTML = kosong("Belum ada ujian", "Belum ada ujian yang bisa dipantau.");
+    return;
+  }
+  if (!MN.ujian.some((u) => u.id === MN.ujianId)) {
+    const kini = sekarangMs();
+    const berjalan = MN.ujian.find((u) => new Date(u.waktu_mulai).getTime() <= kini && kini <= new Date(u.waktu_selesai).getTime());
+    MN.ujianId = (berjalan || MN.ujian[0]).id;
+    MN.kelas = "";
+  }
+
+  konten().innerHTML = `
+    <div class="alat mn-alat">
+      <div class="alat-kiri">
+        <select class="pilih" id="mn-ujian" aria-label="Pilih ujian">
+          ${MN.ujian.map((u) => `<option value="${u.id}" ${u.id === MN.ujianId ? "selected" : ""}>${u.jenis_ujian ? esc(u.jenis_ujian) + " · " : ""}${esc(u.judul)} · ${esc(namaMapel(u.mapel_id))} · ${esc(mnWaktu(u.waktu_mulai))}</option>`).join("")}
+        </select>
+        <select class="pilih" id="mn-kelas" aria-label="Filter kelas"></select>
+        <select class="pilih" id="mn-status" aria-label="Filter status">
+          <option value="">Semua status</option>
+          <option value="mengerjakan">Sedang mengerjakan</option>
+          <option value="bermasalah">Perlu perhatian</option>
+          <option value="selesai">Selesai</option>
+          <option value="belum">Belum mulai</option>
+        </select>
+        <input class="input" id="mn-cari" type="search" placeholder="Cari nama / NISN" aria-label="Cari siswa">
+      </div>
+      <div class="alat-kanan">
+        <select class="pilih" id="mn-jeda" aria-label="Segarkan otomatis">
+          <option value="15">Segarkan tiap 15 dtk</option>
+          <option value="20">Segarkan tiap 20 dtk</option>
+          <option value="30">Segarkan tiap 30 dtk</option>
+          <option value="60">Segarkan tiap 60 dtk</option>
+          <option value="0">Manual</option>
+        </select>
+        <button class="btn btn-primary" id="mn-segar" type="button">Segarkan</button>
+      </div>
+    </div>
+    <div id="mn-isi"><p class="memuat">Memuat...</p></div>`;
+
+  $("#mn-ujian").onchange = (e) => { MN.ujianId = e.target.value; MN.kelas = ""; mnMuat(); };
+  $("#mn-kelas").onchange = (e) => { MN.kelas = e.target.value; mnGambar(); };
+  $("#mn-status").onchange = (e) => { MN.status = e.target.value; mnGambar(); };
+  $("#mn-cari").oninput = (e) => { MN.cari = e.target.value; mnGambar(); };
+  $("#mn-jeda").onchange = (e) => { MN.jeda = Number(e.target.value); mnJadwal(); };
+  $("#mn-segar").onclick = () => mnMuat();
+  $("#mn-status").value = MN.status;
+  $("#mn-cari").value = MN.cari;
+  $("#mn-jeda").value = String(MN.jeda);
+
+  await mnMuat();
+  mnJadwal();
+}
+
+// Polling hanya berjalan bila: halaman monitor terbuka, tab terlihat, tidak ada modal.
+function mnJadwal() {
+  clearInterval(MN.timer);
+  MN.timer = null;
+  if (!MN.jeda) return;
+  MN.timer = setInterval(() => {
+    if (!location.hash.startsWith("#monitor") || !$("#mn-isi")) { clearInterval(MN.timer); MN.timer = null; return; }
+    if (document.hidden || document.querySelector(".modal-bg")) return;
+    mnMuat(true).catch(() => {});
+  }, MN.jeda * 1000);
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && MN.timer && location.hash.startsWith("#monitor") && $("#mn-isi")) mnMuat(true).catch(() => {});
+});
+
+async function mnMuat(senyap = false) {
+  if (MN.memuat) return;
+  MN.memuat = true;
+  const isi = $("#mn-isi");
+  if (isi && !senyap) isi.innerHTML = '<p class="memuat">Memuat...</p>';
+  try {
+    const { data, error } = await sb.rpc("monitor_ujian", { p_ujian_id: MN.ujianId });
+    if (error) {
+      const hilang = error.code === "PGRST202" || /could not find the function/i.test(error.message || "");
+      throw new Error(hilang ? "Fungsi monitor belum terpasang. Jalankan 22_anti_curang_monitor.sql di Supabase." : error.message);
+    }
+    MN.data = data;
+    MN.t0 = performance.now();
+    const kls = [...new Set((data.baris || []).map((b) => b.kelas))].sort(urut);
+    const sel = $("#mn-kelas");
+    if (sel) {
+      sel.innerHTML = `<option value="">Semua kelas</option>` +
+        kls.map((k) => `<option value="${esc(k)}" ${MN.kelas === k ? "selected" : ""}>${esc(k)}</option>`).join("");
+    }
+    mnGambar();
+  } catch (e) {
+    if (isi && !senyap) isi.innerHTML = `<div class="galat-blok"><b>Gagal memuat monitor.</b><br>${esc(e.message || e)}</div>`;
+  } finally {
+    MN.memuat = false;
+  }
+}
+
+function mnPerluPerhatian(b, maks) {
+  const akt = mnStatusAktivitas(b).k;
+  return b.status === "mengerjakan" && (b.pelanggaran > 0 || b.lokasi_ok === false || akt === "putus" || akt === "senyap")
+    || (b.pelanggaran >= maks && maks > 0);
+}
+
+function mnGambar() {
+  const isi = $("#mn-isi");
+  const D = MN.data;
+  if (!isi || !D) return;
+  const ac = D.anticurang || {};
+  const maks = ac.maks || 0;
+  const semua = D.baris || [];
+  const c = norm(MN.cari);
+
+  let daftar = semua.filter((b) =>
+    (!MN.kelas || b.kelas === MN.kelas) &&
+    (!MN.status || (MN.status === "bermasalah" ? mnPerluPerhatian(b, maks) : b.status === MN.status)) &&
+    (!c || norm(b.nama).includes(c) || norm(b.nisn).includes(c)));
+
+  const rank = { mengerjakan: 0, belum: 1, selesai: 2 };
+  daftar = daftar.sort((a, b) =>
+    (rank[a.status] - rank[b.status]) ||
+    (mnPerluPerhatian(b, maks) - mnPerluPerhatian(a, maks)) ||
+    (b.pelanggaran - a.pelanggaran) ||
+    urut(a.kelas, b.kelas) || urut(a.nama, b.nama));
+
+  const hit = (st) => semua.filter((b) => b.status === st).length;
+  const nKerja = hit("mengerjakan"), nSelesai = hit("selesai"), nBelum = hit("belum");
+  const nMasalah = semua.filter((b) => b.pelanggaran > 0).length;
+  const nLuar = semua.filter((b) => b.status === "mengerjakan" && b.lokasi_ok === false).length;
+  const nPutus = semua.filter((b) => ["senyap", "putus"].includes(mnStatusAktivitas(b).k)).length;
+  const kartu = (ikon, angka, label, warna = "") =>
+    `<div class="mn-kartu ${warna}"><span class="mn-ikon" aria-hidden="true">${ikon}</span><div><div class="mn-angka">${angka}</div><div class="mn-label">${label}</div></div></div>`;
+
+  const total = D.total_soal || 0;
+  const kini = mnEpochSekarang();
+
+  isi.innerHTML = `
+    ${ac.aktif ? "" : `<div class="catatan">Anti curang sedang <b>nonaktif</b> (atau belum diatur). Status & progres tetap tampil, tetapi pelanggaran, lokasi, dan aktivitas tidak dicatat. Atur di menu Pengaturan (khusus admin).</div>`}
+    <div class="mn-stat">
+      ${kartu("👥", semua.length, "Peserta")}
+      ${kartu("✍️", nKerja, "Mengerjakan", "warn")}
+      ${kartu("✅", nSelesai, "Selesai", "ok")}
+      ${kartu("⏳", nBelum, "Belum mulai", "abu")}
+      ${ac.aktif ? kartu("⚠️", nMasalah, "Ada pelanggaran", nMasalah ? "off" : "ok") : ""}
+      ${ac.aktif && ac.wajib_gps ? kartu("📍", nLuar, "Di luar area", nLuar ? "off" : "ok") : ""}
+      ${kartu("📶", nPutus, "Senyap / terputus", nPutus ? "warn" : "ok")}
+    </div>
+    <p class="ket mn-ket">Diperbarui ${esc(mnJam(D.server_epoch))} WITA${MN.jeda ? ` · otomatis tiap ${MN.jeda} detik` : " · manual"}. Status &ldquo;Aktif&rdquo; berarti ada laporan dari perangkat siswa dalam ±${(ac.interval || 45) * 2} detik terakhir.</p>
+    ${daftar.length ? `<div class="tabel-bungkus mn-tabel"><table class="resp"><thead><tr>
+      <th>No</th><th>Siswa</th><th>Kelas</th><th>Status / Progres</th><th>Aktivitas</th><th>Perangkat</th>
+      ${ac.wajib_gps ? "<th>Lokasi</th>" : ""}<th>Pelanggaran</th><th></th></tr></thead><tbody>
+      ${daftar.map((b, i) => {
+        const akt = mnStatusAktivitas(b);
+        const kerja = b.status === "mengerjakan";
+        const t = Math.min(b.terjawab || 0, total);
+        const p = total ? Math.round((t / total) * 100) : 0;
+        const bat = kerja && b.mulai_pada ? Math.min(new Date(b.mulai_pada).getTime() / 1000 + (D.durasi_menit || 0) * 60, new Date(D.waktu_selesai).getTime() / 1000) : 0;
+        const sisaMnt = kerja && bat ? Math.max(0, Math.round((bat - kini) / 60)) : null;
+        const stBadge = b.status === "selesai" ? '<span class="badge ok">Selesai</span>'
+          : kerja ? '<span class="badge warn">Mengerjakan</span>' : '<span class="badge off">Belum</span>';
+        const pel = b.pelanggaran || 0;
+        const pelKelas = !pel ? "ok" : (maks && pel >= maks) ? "off" : "warn";
+        let lok = "-";
+        if (b.lokasi_ok === true) lok = `<span class="badge ok">Di area</span>${b.jarak_m != null ? `<small>${Math.round(b.jarak_m)} m</small>` : ""}`;
+        else if (b.lokasi_ok === false) lok = `<span class="badge off">Di luar area</span>${b.jarak_m != null ? `<small>${Math.round(b.jarak_m)} m</small>` : ""}`;
+        return `<tr class="${mnPerluPerhatian(b, maks) ? "mn-baris-masalah" : ""}">
+          <td data-label="No" class="angka">${i + 1}</td>
+          <td data-label="Siswa"><b>${esc(b.nama)}</b><small class="mono">${esc(b.nisn)}</small></td>
+          <td data-label="Kelas">${esc(b.kelas)}</td>
+          <td data-label="Status">${stBadge}${kerja ? `<div class="hp-mini"><div class="hp-bar"><i class="m" style="width:${p}%"></i></div><small>${t}/${total} soal · ${p}%${sisaMnt != null ? ` · sisa ~${sisaMnt} mnt` : ""}</small></div>` : ""}</td>
+          <td data-label="Aktivitas">${kerja ? `<span class="mn-titik ${akt.k}"></span>${esc(akt.teks)}` : "-"}</td>
+          <td data-label="Perangkat">${b.info ? `${esc(b.info)}${b.layar ? `<small>${b.layar === "penuh" ? "Layar penuh" : "Layar biasa"}</small>` : ""}` : "-"}</td>
+          ${ac.wajib_gps ? `<td data-label="Lokasi">${lok}</td>` : ""}
+          <td data-label="Pelanggaran"><span class="badge ${pelKelas}">${pel}${maks ? ` / ${maks}` : ""}</span></td>
+          <td class="aksi">
+            <button class="btn btn-kecil" data-rinci="${b.siswa_id}" data-nama="${esc(b.nama)}">Rincian</button>
+            ${pel > 0 ? `<button class="btn btn-kecil" data-reset="${b.siswa_id}" data-nama="${esc(b.nama)}">Reset</button>` : ""}
+          </td></tr>`;
+      }).join("")}
+      </tbody></table></div>`
+      : kosong("Tidak ada data", "Ubah filter, atau pastikan ujian ini sudah ditujukan ke kelas peserta.")}`;
+
+  isi.querySelectorAll("[data-rinci]").forEach((b) => { b.onclick = () => mnRincian(b.dataset.rinci, b.dataset.nama); });
+  isi.querySelectorAll("[data-reset]").forEach((b) => { b.onclick = () => mnReset(b.dataset.reset, b.dataset.nama); });
+}
+
+async function mnReset(siswaId, nama) {
+  const ya = await konfirmasi(`Reset hitungan pelanggaran <b>${esc(nama)}</b> menjadi 0? Riwayat kejadian tetap tersimpan, dan pengawas yang mereset tercatat.`, { ya: "Ya, reset" });
+  if (!ya) return;
+  const { error } = await sb.rpc("reset_pelanggaran_ujian", { p_ujian_id: MN.ujianId, p_siswa_id: siswaId });
+  if (error) { toast(error.message, "error"); return; }
+  toast("Pelanggaran direset.", "ok");
+  mnMuat(true).catch(() => {});
+}
+
+async function mnRincian(siswaId, nama) {
+  const m = tampilModal(`Rincian: ${nama}`, '<p class="memuat">Memuat...</p>', { lebar: "sedang", aksi: [{ label: "Tutup", kelas: "btn-primary" }] });
+  try {
+    const { data, error } = await sb.rpc("monitor_log_siswa", { p_ujian_id: MN.ujianId, p_siswa_id: siswaId });
+    if (error) throw error;
+    if (!data || !data.ada) { m.body.innerHTML = '<p class="ket">Belum ada data pemantauan untuk siswa ini.</p>'; return; }
+    const log = (data.log || []).slice().reverse();
+    const lat = data.lat, lng = data.lng;
+    const selang = data.aktif_epoch ? Math.max(0, data.server_epoch - data.aktif_epoch) : null;
+    m.body.innerHTML = `
+      <div class="hasil-modal-identitas" style="margin-bottom:1rem">
+        <div><small>Pelanggaran</small><b>${data.pelanggaran}</b></div>
+        <div><small>Perangkat</small><b>${esc(data.info || "-")}</b></div>
+        <div><small>Tampilan</small><b>${data.layar === "penuh" ? "Layar penuh" : data.layar === "biasa" ? "Layar biasa" : "-"}</b></div>
+        <div><small>Laporan terakhir</small><b>${data.aktif_epoch ? `${esc(mnJam(data.aktif_epoch))} WITA${selang != null ? ` (${selang < 90 ? selang + " dtk" : Math.round(selang / 60) + " mnt"} lalu)` : ""}` : "-"}</b></div>
+        ${lat != null ? `<div><small>Lokasi terakhir</small><b>${data.jarak_m != null ? Math.round(data.jarak_m) + " m dari titik ujian · " : ""}akurasi ${data.akurasi != null ? Math.round(data.akurasi) + " m" : "-"}
+          <br><a href="https://www.google.com/maps?q=${encodeURIComponent(lat + "," + lng)}" target="_blank" rel="noopener noreferrer">Lihat di peta</a></b></div>` : ""}
+      </div>
+      <div class="sl-judul" style="margin-bottom:.4rem">Riwayat kejadian (40 terakhir)</div>
+      ${log.length ? `<div class="mn-log">${log.map((e) => {
+        const [teks, jenis] = MN_LABEL[e.j] || [e.j, "warn"];
+        let ekstra = "";
+        if (e.d != null) {
+          if (["pindah_aplikasi", "kembali_aktif"].includes(e.j)) ekstra = ` · ${e.d} dtk`;
+          else if (["keluar_area", "lompat_lokasi"].includes(e.j)) ekstra = ` · ${e.d} m`;
+        }
+        return `<div class="mn-log-baris"><span class="mono">${esc(mnJam(e.t))}</span><span class="badge ${jenis}">${esc(teks)}${esc(ekstra)}</span></div>`;
+      }).join("")}</div>` : '<p class="ket">Belum ada kejadian tercatat.</p>'}`;
+  } catch (e) {
+    m.body.innerHTML = `<div class="galat-blok">${esc(e.message || e)}</div>`;
+  }
+}
+
+// =====================================================================
+//  PENGATURAN ANTI CURANG (kartu di menu Pengaturan, khusus admin)
+// =====================================================================
+async function rPengaturanAntiCurang(el) {
+  if (!el || PANEL !== "admin") return;
+  const { data, error } = await sb.from("pengaturan_anticurang").select("*").eq("id", 1).maybeSingle();
+  if (error) {
+    el.innerHTML = `<div class="panel-mewah"><div class="panel-kepala"><h3>Anti curang &amp; lokasi ujian</h3></div>
+      <div class="galat-blok">${esc(error.message)}. Pastikan <b>22_anti_curang_monitor.sql</b> sudah dijalankan di Supabase.</div></div>`;
+    return;
+  }
+  const c = data || {};
+  const ang = (v, d) => (v === null || v === undefined ? d : v);
+  el.innerHTML = `
+    <div class="panel-mewah">
+      <div class="panel-kepala"><h3>Anti curang &amp; lokasi ujian</h3></div>
+      <p class="ket">Berlaku untuk semua ujian siswa (Android &amp; iPhone). Pelanggaran dicatat dan bisa dipantau di menu <b>Monitor Ujian</b>.</p>
+
+      <label class="f ac-cek"><input type="checkbox" data-ac-f="aktif" ${c.aktif !== false ? "checked" : ""}> <span><b>Aktifkan anti curang</b><small>Deteksi pindah aplikasi/tab, split-screen, salin-tempel, dan satu akun satu perangkat.</small></span></label>
+      <label class="f ac-cek"><input type="checkbox" data-ac-f="wajib_layar_penuh" ${c.wajib_layar_penuh !== false ? "checked" : ""}> <span><b>Wajib layar penuh</b><small>Android &amp; iPad/laptop: otomatis. iPhone: siswa diminta memakai &ldquo;Tambah ke Layar Utama&rdquo; (Safari iPhone tidak mendukung layar penuh).</small></span></label>
+      <label class="f ac-cek"><input type="checkbox" data-ac-f="wajib_gps" ${c.wajib_gps ? "checked" : ""}> <span><b>Wajib GPS (ujian hanya di area sekolah)</b><small>Lokasi diperiksa di server. Bila diaktifkan, titik lokasi di bawah wajib diisi.</small></span></label>
+
+      <div class="ac-gps" id="ac-gps">
+        <div class="baris2">
+          <label class="f">Latitude
+            <input class="input" data-ac-f="gps_lat" inputmode="decimal" autocomplete="off" placeholder="-5.147665" value="${ang(c.gps_lat, "")}"></label>
+          <label class="f">Longitude
+            <input class="input" data-ac-f="gps_lng" inputmode="decimal" autocomplete="off" placeholder="119.432732" value="${ang(c.gps_lng, "")}"></label>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.2rem 0 .8rem">
+          <button class="btn btn-kecil" type="button" id="ac-lokasi-saya">📍 Gunakan lokasi saya sekarang</button>
+          <a class="btn btn-kecil" id="ac-peta" href="#" target="_blank" rel="noopener noreferrer">Lihat di peta</a>
+          <span class="ket" id="ac-lokasi-info"></span>
+        </div>
+        <p class="ket" style="margin-top:-.3rem">Tips: berdiri di tengah sekolah (di luar ruangan, GPS aktif) lalu tekan tombol di atas. Atau buka Google Maps, tekan lama pada lokasi sekolah, lalu salin angka koordinatnya.</p>
+        <div class="baris2">
+          <label class="f">Jarak maksimal dari titik (meter)
+            <input class="input" type="number" min="10" max="50000" step="10" data-ac-f="gps_radius_m" value="${ang(c.gps_radius_m, 200)}"></label>
+          <label class="f">Akurasi GPS terburuk yang diterima (meter)
+            <input class="input" type="number" min="10" max="2000" step="10" data-ac-f="gps_akurasi_maks_m" value="${ang(c.gps_akurasi_maks_m, 150)}"></label>
+        </div>
+        <p class="ket">Radius 150-300 m cocok untuk satu sekolah. Di dalam gedung GPS sering kurang akurat, jadi jangan terlalu kecil. Aplikasi lokasi palsu (fake GPS) bisa menipu browser; sistem mengurangi risikonya dengan menolak lokasi tak valid dan mendeteksi lompatan lokasi.</p>
+      </div>
+
+      <div class="baris2" style="margin-top:.6rem">
+        <label class="f">Batas pelanggaran
+          <input class="input" type="number" min="1" max="20" data-ac-f="maks_pelanggaran" value="${ang(c.maks_pelanggaran, 3)}"></label>
+        <label class="f">Bila melebihi batas
+          <select class="pilih" data-ac-f="aksi_melebihi">
+            <option value="kumpul" ${c.aksi_melebihi !== "catat" ? "selected" : ""}>Kumpulkan ujian otomatis</option>
+            <option value="catat" ${c.aksi_melebihi === "catat" ? "selected" : ""}>Hanya catat &amp; peringatkan</option>
+          </select></label>
+      </div>
+      <label class="f">Interval laporan perangkat siswa (detik)
+        <input class="input" type="number" min="20" max="180" data-ac-f="interval_detik" value="${ang(c.interval_detik, 45)}"></label>
+      <p class="ket" id="ac-beban"></p>
+
+      <div style="margin-top:.8rem"><button class="btn btn-primary" id="ac-simpan" type="button">Simpan anti curang</button></div>
+    </div>`;
+
+  const f = (k) => el.querySelector(`[data-ac-f="${k}"]`);
+  const ringkas = () => {
+    const iv = Math.max(20, Number(f("interval_detik").value) || 45);
+    $("#ac-beban").textContent = `Perkiraan beban server: 100 siswa mengerjakan bersamaan ≈ ${(100 / iv).toFixed(1)} laporan kecil per detik. Makin besar intervalnya, makin ringan.`;
+    const la = Number(f("gps_lat").value), lo = Number(f("gps_lng").value);
+    const p = $("#ac-peta");
+    if (f("gps_lat").value && f("gps_lng").value && isFinite(la) && isFinite(lo)) { p.href = `https://www.google.com/maps?q=${encodeURIComponent(la + "," + lo)}`; p.style.opacity = ""; }
+    else { p.href = "#"; p.style.opacity = ".45"; }
+    $("#ac-gps").classList.toggle("mati", !f("wajib_gps").checked);
+  };
+  el.addEventListener("input", ringkas);
+  el.addEventListener("change", ringkas);
+  ringkas();
+
+  $("#ac-lokasi-saya").onclick = () => {
+    const info = $("#ac-lokasi-info");
+    if (!window.isSecureContext || !navigator.geolocation) { info.textContent = "Browser/alamat ini tidak mendukung GPS (butuh HTTPS)."; return; }
+    info.textContent = "Membaca lokasi...";
+    navigator.geolocation.getCurrentPosition((pos) => {
+      f("gps_lat").value = pos.coords.latitude.toFixed(6);
+      f("gps_lng").value = pos.coords.longitude.toFixed(6);
+      info.textContent = `Terisi (akurasi ±${Math.round(pos.coords.accuracy)} m). Jangan lupa simpan.`;
+      ringkas();
+    }, (e) => {
+      info.textContent = e.code === 1 ? "Izin lokasi ditolak di browser ini." : "Lokasi tidak terbaca. Coba di tempat terbuka.";
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  };
+
+  $("#ac-simpan").onclick = async () => {
+    const tombol = $("#ac-simpan"); tombol.disabled = true;
+    try {
+      const angka = (k, min, max, nama) => {
+        const n = Number(f(k).value);
+        if (!Number.isFinite(n) || n < min || n > max) throw new Error(`${nama} harus berupa angka ${min} sampai ${max}.`);
+        return Math.round(n);
+      };
+      const wajibGps = f("wajib_gps").checked;
+      let lat = null, lng = null;
+      if (f("gps_lat").value.trim() !== "" || f("gps_lng").value.trim() !== "" || wajibGps) {
+        lat = Number(f("gps_lat").value.replace(",", ".")); lng = Number(f("gps_lng").value.replace(",", "."));
+        if (f("gps_lat").value.trim() === "" || f("gps_lng").value.trim() === "" || !isFinite(lat) || !isFinite(lng)
+          || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+          if (wajibGps) throw new Error("Isi latitude dan longitude yang valid (contoh -5.147665 dan 119.432732).");
+          lat = null; lng = null;
+        }
+      }
+      const isi = {
+        id: 1,
+        aktif: f("aktif").checked,
+        wajib_layar_penuh: f("wajib_layar_penuh").checked,
+        wajib_gps: wajibGps,
+        gps_lat: lat, gps_lng: lng,
+        gps_radius_m: angka("gps_radius_m", 10, 50000, "Jarak maksimal"),
+        gps_akurasi_maks_m: angka("gps_akurasi_maks_m", 10, 2000, "Akurasi GPS"),
+        maks_pelanggaran: angka("maks_pelanggaran", 1, 20, "Batas pelanggaran"),
+        aksi_melebihi: f("aksi_melebihi").value === "catat" ? "catat" : "kumpul",
+        interval_detik: angka("interval_detik", 20, 180, "Interval laporan"),
+        diubah: new Date().toISOString(),
+      };
+      const { error: e1 } = await sb.from("pengaturan_anticurang").upsert(isi);
+      if (e1) throw new Error(e1.message);
+      try { await sb.from("log_aktivitas").insert({ pelaku: S.me.id, aksi: "ubah_pengaturan_anticurang", target: isi.aktif ? "aktif" : "nonaktif" }); } catch (_) { /* abaikan */ }
+      toast("Pengaturan anti curang disimpan.", "ok");
+    } catch (err) {
+      toast(err.message || String(err), "error");
+    } finally {
+      tombol.disabled = false;
+    }
+  };
+}

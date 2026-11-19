@@ -35,8 +35,18 @@ const CBT = {
   submitting: false,
   akhirMs: 0,
   rev: 0,          // naik setiap ada perubahan jawaban (untuk penanda sinkron)
+  revSync: 0,      // nilai rev terakhir yang sudah berhasil dikirim ke server
+  terakhirSync: 0, // waktu (ms) sinkron server terakhir yang berhasil
+  gagalSync: 0,    // jumlah gagal sinkron beruntun (untuk backoff)
+  mulaiMs: 0,      // waktu mulai sesi (ms)
+  ingat: {},       // pengingat sisa waktu yang sudah ditampilkan {10:true,5:true,1:true}
   retryTimer: null,
 };
+
+// Jeda sinkron rutin ke server. Jawaban SELALU langsung masuk localStorage;
+// server hanya menerima salinan cadangan tiap jeda ini (bukan tiap klik).
+// Jawaban final tetap dikirim utuh saat "Kumpulkan", jadi aman.
+const SYNC_JEDA_MS = 30000;
 
 const HURUF_OPSI = "ABCDEF";
 
@@ -104,6 +114,113 @@ function hentikanTimerCBT() {
     clearTimeout(CBT.saveTimer);
     CBT.saveTimer = null;
   }
+  perangkatHenti();
+}
+
+// ---------------------------------------------------------------------
+//  Indikator baterai & sinyal (hanya tampilan, terpisah dari anti-curang)
+//  - Tidak memakai polling: bereaksi pada event baterai/koneksi dari browser.
+//  - Baterai: hanya Chrome/Edge Android & desktop. Sinyal rinci: Chrome/Android.
+//    Di iPhone/Safari bagian yang tidak didukung otomatis tidak ditampilkan.
+// ---------------------------------------------------------------------
+const PRKT = { bat: null, pelepas: [], batPeringatan: { 20: false, 10: false } };
+
+function perangkatHenti() {
+  PRKT.pelepas.forEach((f) => { try { f(); } catch (_) {} });
+  PRKT.pelepas = [];
+  PRKT.bat = null;
+}
+
+function perangkatSinyal() {
+  if (navigator.onLine === false) return { bar: 0, label: "Offline", kelas: "mati" };
+  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const t = c && c.effectiveType;
+  if (t === "4g") return { bar: 4, label: "Kuat", kelas: "" };
+  if (t === "3g") return { bar: 3, label: "Sedang", kelas: "" };
+  if (t === "2g") return { bar: 2, label: "Lemah", kelas: "lemah" };
+  if (t === "slow-2g") return { bar: 1, label: "Sangat lemah", kelas: "lemah" };
+  return { bar: null, label: "Online", kelas: "" };
+}
+
+function perangkatRender() {
+  const el = $("#cbt-perangkat");
+  if (!el) return;
+  const sg = perangkatSinyal();
+  const bars = sg.bar == null
+    ? '<i class="pr-titik"></i>'
+    : `<span class="pr-bar" aria-hidden="true">${[1, 2, 3, 4].map((i) => `<i class="${i <= sg.bar ? "on" : ""}" style="height:${3 + i * 3}px"></i>`).join("")}</span>`;
+  let html = `<span class="pr-sinyal ${sg.kelas}" title="Koneksi internet: ${esc(sg.label)}">${bars}<small>${esc(sg.label)}</small></span>`;
+
+  const b = PRKT.bat;
+  if (b) {
+    const pct = Math.max(0, Math.min(100, Math.round(b.level * 100)));
+    const rendah = pct <= 20 && !b.charging;
+    html += `<span class="pr-bat ${rendah ? "rendah" : ""}" title="Baterai ${pct}%${b.charging ? " (sedang diisi)" : ""}"><span class="pr-bat-ikon" aria-hidden="true"><i style="width:${pct}%"></i></span><small>${pct}%${b.charging ? " ⚡" : ""}</small></span>`;
+  }
+  if (typeof AC !== "undefined" && AC.petaTersedia && AC.petaTersedia()) {
+    html += '<button type="button" class="pr-peta" data-peta title="Lihat posisi Anda di peta" aria-label="Lihat posisi Anda di peta">📍</button>';
+  }
+  el.innerHTML = html;
+}
+
+function perangkatCekBaterai() {
+  const b = PRKT.bat;
+  if (!b) return;
+  const pct = Math.round(b.level * 100);
+  if (b.charging) { PRKT.batPeringatan = { 20: false, 10: false }; return; }
+  if (pct <= 10 && !PRKT.batPeringatan[10]) {
+    PRKT.batPeringatan = { 20: true, 10: true };
+    toast(`Baterai tinggal ${pct}%! Segera colok charger agar ujian tidak terputus.`, "error");
+  } else if (pct <= 20 && !PRKT.batPeringatan[20]) {
+    PRKT.batPeringatan[20] = true;
+    toast(`Baterai ${pct}%. Sebaiknya colok charger.`, "info");
+  }
+}
+
+async function perangkatMulai() {
+  perangkatHenti();
+  PRKT.batPeringatan = { 20: false, 10: false };
+  const pasang = (target, jenis, fn) => {
+    target.addEventListener(jenis, fn);
+    PRKT.pelepas.push(() => target.removeEventListener(jenis, fn));
+  };
+
+  const el = $("#cbt-perangkat");
+  if (el) el.onclick = (e) => { if (e.target.closest("[data-peta]") && AC.tampilPeta) AC.tampilPeta(); };
+
+  pasang(window, "offline", () => {
+    perangkatRender();
+    toast("Koneksi internet terputus. Jawaban tetap tersimpan di perangkat, lanjutkan mengerjakan.", "error");
+  });
+  pasang(window, "online", () => {
+    perangkatRender();
+    toast("Koneksi internet pulih. Jawaban disinkronkan ke server.", "info");
+  });
+  const kon = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (kon && kon.addEventListener) pasang(kon, "change", perangkatRender);
+
+  perangkatRender();
+
+  if (navigator.getBattery) {
+    try {
+      const b = await navigator.getBattery();
+      if (!$("#cbt-perangkat")) return; // ruang ujian sudah ditutup
+      PRKT.bat = b;
+      const ubah = () => { perangkatRender(); perangkatCekBaterai(); };
+      pasang(b, "levelchange", ubah);
+      pasang(b, "chargingchange", ubah);
+      ubah();
+    } catch (_) { /* tidak didukung / diblokir: indikator baterai tidak ditampilkan */ }
+  }
+}
+
+// Pengingat sisa waktu: toast biasa (tidak memindahkan fokus, tidak memengaruhi anti-curang)
+function pengingatWaktu(menit) {
+  const kosongN = CBT.soal.filter((x) => !cekSoalTerjawab(x, CBT.jawaban[x.id])).length;
+  const teks = kosongN > 0
+    ? `Sisa waktu ${menit} menit. Masih ada ${kosongN} soal belum dijawab.`
+    : `Sisa waktu ${menit} menit. Semua soal sudah terjawab, periksa lagi lalu kumpulkan.`;
+  toast(teks, menit <= 1 ? "error" : "info");
 }
 
 function perbaruiLencanaMenuUjian() {
@@ -328,6 +445,8 @@ async function rUjian() {
   CBT.aktif = false;
   hentikanTimerCBT();
   document.body.classList.remove("mode-cbt");
+  AC.berhenti();
+  acMuatPengaturan(); // pengaturan anti curang dimuat lebih awal (tanpa menunggu)
 
   await muatDataSiswa();
   const hasilMap = new Map(S.hasil.map((h) => [h.ujian_id, h]));
@@ -461,10 +580,12 @@ function modalKonfirmasiMulai(ujianId) {
       <b>Tata Tertib Ujian:</b>
       <ul style="margin:.35rem 0 0;padding-left:1.2rem">
         <li>Timer berjalan otomatis begitu Anda menekan tombol mulai.</li>
-        <li>Setiap jawaban tersimpan otomatis ke server saat Anda memilih/mengisi.</li>
+        <li>Setiap jawaban tersimpan otomatis di perangkat dan dicadangkan ke server secara berkala.</li>
         <li>Jika waktu habis, jawaban akan terkumpul secara otomatis.</li>
+        ${AC.ringkasTataTertib()}
       </ul>
     </div>
+    ${(AC.petaTersedia && AC.petaTersedia()) ? '<div class="peta-awal" id="peta-awal"></div>' : ""}
     ${butuhToken ? `
       <label class="f" style="margin-top:.8rem">Token Ujian (dari Pengawas)
         <input class="input mono" id="input-token-ujian" placeholder="Masukkan token ujian..." autocomplete="off" style="text-transform:uppercase;font-weight:700;letter-spacing:.12em">
@@ -483,11 +604,16 @@ function modalKonfirmasiMulai(ujianId) {
             throw new Error("Masukkan token ujian terlebih dahulu.");
           }
           sessionStorage.setItem(`token_ujian_${u.id}`, tokenVal || "");
+          AC.mintaLayarPenuh(); // harus dipanggil dari klik tombol (aturan browser)
           location.hash = `ujian/${u.id}`;
         },
       },
     ],
   });
+
+  // Peta mini posisi siswa (dibaca di perangkat, tanpa server)
+  const kotakPeta = m.body.querySelector("#peta-awal");
+  if (kotakPeta && AC.isiPetaAwal) AC.isiPetaAwal(kotakPeta);
 }
 
 // ---------------------------------------------------------------------
@@ -576,8 +702,8 @@ function bersihkanSemuaCache() {
 }
 
 function simpanLokal(dirty) {
-  if (!CBT.aktif || !CBT.ujian || !S.me) return;
-  tulisLokal(kunciJawab(CBT.ujian.id), {
+  if (!CBT.aktif || !CBT.ujian || !S.me) return false;
+  return tulisLokal(kunciJawab(CBT.ujian.id), {
     jawaban: CBT.jawaban,
     ragu: [...CBT.ragu],
     urutan: CBT.urutan,
@@ -609,14 +735,17 @@ async function simpanProgresKeServer(segera = false) {
 
   // 1) Selalu salin dulu ke localStorage (instan, tidak butuh internet)
   CBT.rev++;
-  simpanLokal(true);
+  const lokalOk = simpanLokal(true);
 
-  // 2) Lalu kirim ke server (ditunda 700 ms agar tidak terlalu sering)
   const jalankan = async () => {
+    if (CBT.saveTimer) { clearTimeout(CBT.saveTimer); CBT.saveTimer = null; }
     if (!CBT.aktif || !CBT.ujian || CBT.submitting) return;
+    if (CBT.saving) return; // sedang mengirim; perubahan baru ikut di putaran berikutnya
+    if (CBT.rev === CBT.revSync) return; // tidak ada perubahan sejak sinkron terakhir
+
     const revKirim = CBT.rev;
     CBT.saving = true;
-    perbaruiIndikatorSimpan("Menyimpan...");
+    perbaruiIndikatorSimpan("Menyinkronkan...");
     try {
       const { error } = await sb.rpc("simpan_progres_ujian_siswa", {
         p_ujian_id: CBT.ujian.id,
@@ -625,28 +754,53 @@ async function simpanProgresKeServer(segera = false) {
         p_urutan: CBT.urutan,
       });
       if (error) throw error;
+      CBT.revSync = revKirim;
+      CBT.terakhirSync = Date.now();
+      CBT.gagalSync = 0;
       // Tandai "sudah tersinkron" hanya jika tidak ada perubahan baru selama pengiriman
-      if (revKirim === CBT.rev) simpanLokal(false);
-      perbaruiIndikatorSimpan("Tersimpan ✓");
+      if (revKirim === CBT.rev) {
+        simpanLokal(false);
+        perbaruiIndikatorSimpan("Tersimpan ✓");
+      } else {
+        perbaruiIndikatorSimpan("Tersimpan di perangkat ✓");
+        jadwalkanSync(); // ada perubahan baru saat mengirim
+      }
     } catch (_) {
-      perbaruiIndikatorSimpan("Gagal simpan ke server - tersimpan di perangkat, mencoba lagi...");
+      CBT.gagalSync++;
+      perbaruiIndikatorSimpan("Tersimpan di perangkat ✓ (server belum terjangkau, mencoba lagi...)");
+      // Backoff: 10 dtk, 20 dtk, 40 dtk, maks 60 dtk (+ acak agar tidak serempak)
+      const tunggu = Math.min(60000, 10000 * 2 ** Math.min(CBT.gagalSync - 1, 3));
       if (CBT.retryTimer) clearTimeout(CBT.retryTimer);
       CBT.retryTimer = setTimeout(() => {
         CBT.retryTimer = null;
         simpanProgresKeServer(true);
-      }, 10000);
+      }, tunggu + Math.random() * 3000);
     } finally {
       CBT.saving = false;
     }
   };
+  CBT.jalankanSync = jalankan;
 
-  if (CBT.saveTimer) clearTimeout(CBT.saveTimer);
   if (segera) {
     await jalankan();
-  } else {
-    perbaruiIndikatorSimpan("Menunggu simpan...");
-    CBT.saveTimer = setTimeout(jalankan, 700);
+    return;
   }
+
+  // 2) Sinkron rutin: jadwal TETAP (bukan debounce), satu kiriman memuat semua perubahan.
+  perbaruiIndikatorSimpan(lokalOk ? "Tersimpan di perangkat ✓" : "Menunggu simpan...");
+  // localStorage tidak tersedia (mode privat/penuh): server jadi satu-satunya cadangan, kirim lebih cepat
+  jadwalkanSync(lokalOk ? SYNC_JEDA_MS : 1500);
+}
+
+// Pasang satu timer sinkron (tidak ditumpuk, tidak diundur tiap klik)
+function jadwalkanSync(jedaMs = SYNC_JEDA_MS) {
+  if (CBT.saveTimer || CBT.retryTimer || !CBT.aktif) return;
+  const sisa = Math.max(0, CBT.terakhirSync + jedaMs - Date.now());
+  const acak = Math.random() * 4000; // ratusan siswa tidak mengirim serempak
+  CBT.saveTimer = setTimeout(() => {
+    CBT.saveTimer = null;
+    if (CBT.jalankanSync) CBT.jalankanSync();
+  }, sisa + acak);
 }
 
 function perbaruiIndikatorSimpan(teks) {
@@ -663,6 +817,9 @@ async function bukaRuangUjian(ujianId) {
   try {
     // Pastikan jam server sudah tersinkron sebelum timer dihitung
     try { await WAKTU.siap; } catch (_) {}
+
+    // Anti curang: cek syarat (GPS, dsb.) SEBELUM soal diminta dari server
+    await AC.prasyarat(ujianId);
 
     // Cache paket soal di perangkat ini (jika ada)
     const cache = bacaLokal(kunciPaket(ujianId));
@@ -699,6 +856,10 @@ async function bukaRuangUjian(ujianId) {
     CBT.ragu = new Set(raguAwal);
     CBT.idx = 0;
     CBT.rev = 0;
+    CBT.revSync = 0;
+    CBT.terakhirSync = Date.now();
+    CBT.gagalSync = 0;
+    CBT.jalankanSync = null;
     CBT.submitting = false;
 
     // Susun urutan soal (pertahankan urutan tersimpan di sesi jika ada)
@@ -727,6 +888,8 @@ async function bukaRuangUjian(ujianId) {
     const batasDurasiMs = mulaiMs + Number(data.ujian.durasi_menit || 60) * 60 * 1000;
     const batasJadwalMs = new Date(data.ujian.waktu_selesai).getTime();
     CBT.akhirMs = Math.min(batasDurasiMs, batasJadwalMs);
+    CBT.mulaiMs = mulaiMs;
+    CBT.ingat = {};
 
     document.body.classList.add("mode-cbt");
     $("#judul-halaman").textContent = data.ujian.judul;
@@ -736,15 +899,25 @@ async function bukaRuangUjian(ujianId) {
 
     renderKerangkaCBT();
     mulaiCountdownCBT();
+    perangkatMulai();
+    AC.mulai(data.ujian.id, () => kumpulkanUjianSekarang("pelanggaran"));
   } catch (err) {
     CBT.aktif = false;
+    AC.berhenti();
     document.body.classList.remove("mode-cbt");
     if (/sudah menyelesaikan/i.test((err && err.message) || "")) hapusCacheUjian(ujianId);
-    konten().innerHTML = kosong(
-      "Tidak dapat membuka ujian",
-      err.message || "Terjadi kesalahan saat memuat soal ujian.",
-      `<a class="btn btn-primary" href="#ujian">&larr; Kembali ke Daftar Ujian</a>`
-    );
+    if (err && err.gpsInfo) {
+      // Masalah GPS / lokasi: tampilkan penjelasan + langkah perbaikan + tombol coba lagi
+      konten().innerHTML = AC.htmlMasalahLokasi(err.gpsInfo);
+      const btnCoba = $("#ac-coba-lagi");
+      if (btnCoba) btnCoba.onclick = () => bukaRuangUjian(ujianId);
+    } else {
+      konten().innerHTML = kosong(
+        "Tidak dapat membuka ujian",
+        err.message || "Terjadi kesalahan saat memuat soal ujian.",
+        `<a class="btn btn-primary" href="#ujian">&larr; Kembali ke Daftar Ujian</a>`
+      );
+    }
   }
 }
 
@@ -772,6 +945,16 @@ function mulaiCountdownCBT() {
     const detik = String(totalDetik % 60).padStart(2, "0");
     elTimer.textContent = `${jam}:${menit}:${detik}`;
 
+    // Pengingat 10 / 5 / 1 menit. Hanya tampil saat batas baru saja terlewati (bukan saat dibuka ulang)
+    // dan hanya bila durasi ujian cukup panjang (tidak muncul tepat di awal ujian pendek).
+    const durasiDtk = (CBT.akhirMs - CBT.mulaiMs) / 1000;
+    for (const t of [10, 5, 1]) {
+      if (!CBT.ingat[t] && totalDetik <= t * 60) {
+        CBT.ingat[t] = true;
+        if (totalDetik >= t * 60 - 20 && durasiDtk > t * 60 + 120) pengingatWaktu(t);
+      }
+    }
+
     if (boxTimer) {
       boxTimer.classList.toggle("kritis", totalDetik <= 300); // < 5 menit merah berkedip
     }
@@ -792,6 +975,7 @@ function renderKerangkaCBT() {
             Soal <strong id="cbt-no-aktif">1</strong> <span class="ket">/ ${CBT.soal.length}</span>
           </div>
           <span class="cbt-simpan-pill" id="cbt-status-simpan">Tersimpan ✓</span>
+          <span class="cbt-perangkat" id="cbt-perangkat" aria-label="Status baterai dan sinyal"></span>
         </div>
 
         <div class="cbt-top-kanan">
@@ -1082,7 +1266,6 @@ function renderSoalAktif() {
   $("#cbt-soal-isi").innerHTML = `
     <div class="cbt-soal-meta">
       <span class="badge info">${esc(labelJenis)}</span>
-      <span class="ket">Bobot: ${esc(String(s.bobot || 1))}</span>
     </div>
     <div class="cbt-pertanyaan">${br(s.pertanyaan)}</div>
     <div class="cbt-jawaban-wrap">${areaJawabanHtml}</div>
@@ -1195,6 +1378,7 @@ async function kumpulkanUjianSekarang(otomatis = false) {
 
     modalProses.tutup();
     CBT.aktif = false;
+    AC.berhenti(true);
     document.body.classList.remove("mode-cbt");
     sessionStorage.removeItem(`token_ujian_${CBT.ujian.id}`);
     hapusCacheUjian(CBT.ujian.id); // paket soal + jawaban lokal dihapus setelah terkirim
@@ -1204,7 +1388,9 @@ async function kumpulkanUjianSekarang(otomatis = false) {
     const nilaiAkhir = Number((data && data.nilai) || 0).toFixed(1);
     const pred = predikatNilai(nilaiAkhir);
 
-    tampilModal(otomatis ? "Waktu Habis - Ujian Selesai" : "Ujian Berhasil Dikumpulkan", `
+    const karenaPelanggaran = otomatis === "pelanggaran";
+    tampilModal(karenaPelanggaran ? "Ujian Dikumpulkan Otomatis" : otomatis ? "Waktu Habis - Ujian Selesai" : "Ujian Berhasil Dikumpulkan", `
+      ${karenaPelanggaran ? `<div class="catatan" style="margin-bottom:.8rem"><b>Batas pelanggaran tercapai.</b> Ujian dikumpulkan otomatis. Jawaban yang sudah Anda isi tetap tersimpan, dan pelanggaran dapat dilihat oleh guru/pengawas.</div>` : ""}
       <p>Terima kasih <b>${esc(S.me.nama)}</b>, jawaban ujian Anda telah tercatat di sistem.</p>
       ${bolehNilai ? `
         <div class="pw-besar">
@@ -1434,6 +1620,7 @@ async function tampilHalamanSiswa() {
 
   if (info.key !== "ujian" && CBT.aktif) {
     CBT.aktif = false;
+    AC.berhenti();
     hentikanTimerCBT();
     document.body.classList.remove("mode-cbt");
   }
@@ -1512,6 +1699,7 @@ function bangunMenuSiswa() {
 
   bangunMenuSiswa();
   $("#btn-keluar").onclick = async () => {
+    AC.berhenti();
     bersihkanSemuaCache();
     await sb.auth.signOut();
     location.replace("index.html");
@@ -1521,8 +1709,15 @@ function bangunMenuSiswa() {
   window.addEventListener("hashchange", tampilHalamanSiswa);
   // Koneksi pulih -> langsung sinkronkan jawaban yang tertunda
   window.addEventListener("online", () => {
-    if (CBT.aktif && !CBT.submitting) simpanProgresKeServer(true);
+    if (CBT.aktif && !CBT.submitting) { CBT.gagalSync = 0; simpanProgresKeServer(true); }
   });
+  // Pindah tab / layar mati / halaman ditutup -> kirim sisa perubahan sekarang
+  // (localStorage sudah menyimpan; ini hanya mempercepat cadangan ke server)
+  const kirimSisa = () => {
+    if (CBT.aktif && !CBT.submitting && CBT.rev !== CBT.revSync && CBT.jalankanSync) CBT.jalankanSync();
+  };
+  document.addEventListener("visibilitychange", () => { if (document.hidden) kirimSisa(); });
+  window.addEventListener("pagehide", kirimSisa);
 
   $("#layar-memuat").hidden = true;
   $("#app").hidden = false;

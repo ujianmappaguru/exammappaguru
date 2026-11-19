@@ -208,6 +208,8 @@ async function rPengaturan() {
       <div style="margin-top:.8rem"><button class="btn btn-primary" id="um-simpan" type="button">Simpan tahun ajaran</button></div>
     </div>
 
+    <div id="ac-pengaturan" style="max-width:880px;margin-bottom:1.2rem"></div>
+
     <div class="panel-mewah" style="max-width:880px">
       <div class="panel-kepala"><h3>Kop surat &amp; data sekolah</h3></div>
       <p class="ket">Data ini dipakai sebagai kop dan tempat tanda tangan pada cetak PDF hasil ujian.</p>
@@ -221,6 +223,8 @@ async function rPengaturan() {
       <p class="ket">Logo PNG/JPG/WebP. Ukurannya otomatis diperkecil. Bila logo ada di Google Drive, unduh dulu ke perangkat lalu pilih di sini.</p>
       <div style="margin-top:1rem"><button class="btn btn-primary" id="pg-simpan" type="button">Simpan pengaturan</button></div>
     </div>`;
+
+  if (typeof rPengaturanAntiCurang === "function") rPengaturanAntiCurang($("#ac-pengaturan"));
 
   $("#um-simpan").onclick = async () => {
     const tombol = $("#um-simpan"); tombol.disabled = true;

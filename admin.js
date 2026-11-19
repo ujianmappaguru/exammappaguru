@@ -1546,12 +1546,14 @@ const MENU_GURU = [
   { key: "beranda", judul: "Beranda", sub: "Ringkasan tugas mengajar Anda", ikon: "🏠", render: rBerandaGuru },
   { key: "soal", judul: "Bank Soal", sub: "Isi & kelola soal ujian", ikon: "📝", render: () => rSoal() },
   { key: "hasil", judul: "Hasil Ujian", sub: "Progres ujian, hasil & penilaian esai", ikon: "📊", render: () => rHasil() },
+  { key: "monitor", judul: "Monitor Ujian", sub: "Pantau siswa selama ujian berlangsung", ikon: "📡", render: () => rMonitor() },
 ];
 const MENU_UTAMA = [
   { key: "beranda", judul: "Beranda", sub: "Ringkasan & kendali utama", ikon: "🏠", render: rBeranda },
   { key: "data", judul: "Data", sub: "Kelas, mata pelajaran, guru & siswa", ikon: "🗂️", render: rData },
   { key: "soal", judul: "Bank Soal", sub: "Kelola bank & butir soal ujian", ikon: "📝", render: () => rSoal() },
   { key: "hasil", judul: "Hasil Ujian", sub: "Rekap nilai & status pengerjaan siswa", ikon: "📊", render: () => rHasil() },
+  { key: "monitor", judul: "Monitor Ujian", sub: "Pantau siswa selama ujian berlangsung", ikon: "📡", render: () => rMonitor() },
   { key: "admin", judul: "Admin", sub: "Manajemen akun administrator", ikon: "🛡️", render: rAdmin },
 ];
 const MENU_KHUSUS = [

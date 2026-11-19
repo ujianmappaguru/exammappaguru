@@ -314,6 +314,26 @@ async function slAmbilBank(id) {
   const [b] = await slIsiNamaGuru([slPetaBank(data)]);
   return b;
 }
+// Jumlah seluruh bobot nilai soal. Memakai fungsi server total_bobot_bank (SQL 23)
+// bila ada; bila belum dijalankan, dihitung di browser sebagai cadangan.
+const slFmtBobot = (n) => Number(n || 0).toLocaleString("id-ID", { maximumFractionDigits: 2 });
+async function slMuatBobot(bankId) {
+  const peta = new Map();
+  try {
+    const { data, error } = await sb.rpc("total_bobot_bank", bankId ? { p_bank_id: bankId } : {});
+    if (error) throw error;
+    (data || []).forEach((r) => peta.set(r.bank_id, Number(r.total_bobot) || 0));
+    return peta;
+  } catch (_) {
+    try {
+      const baris = await semua("bank_soal", "bank_id,bobot", bankId ? (q) => q.eq("bank_id", bankId) : null);
+      baris.forEach((r) => peta.set(r.bank_id, (peta.get(r.bank_id) || 0) + (Number(r.bobot) || 0)));
+      return peta;
+    } catch (_2) {
+      return null; // total tidak ditampilkan, fitur lain tetap jalan
+    }
+  }
+}
 const slInfoBank = (b) => `<div class="bank-info"><b>${esc(b.nama)}</b>
   <span class="badge info">Mapel: ${esc(namaMapel(b.mapel_id))}</span>${slChipKelas(b.kelas)}${b.guru ? `<span class="chip">${proIkon("user")} ${esc(b.guru)}</span>` : ""}</div>`;
 
@@ -341,6 +361,8 @@ async function rSoal() {
 async function slDaftar() {
   SL.bank = null;
   const banks = await slMuatSemuaBank();
+  const petaBobot = await slMuatBobot();
+  banks.forEach((b) => { b.total_bobot = petaBobot ? (petaBobot.get(b.id) || 0) : null; });
   konten().innerHTML = `
     <div class="alat pro-alat">
       <div class="alat-kiri">
@@ -362,7 +384,7 @@ async function slDaftar() {
         <h4>${esc(b.nama)}</h4>
         ${slBarisGuru(b)}
         <div class="bank-kelas">${slChipKelas(b.kelas)}</div>
-        <div class="bank-jml"><b>${b.jumlah}</b> butir soal</div>
+        <div class="bank-jml"><b>${b.jumlah}</b> butir soal${b.total_bobot != null ? ` &middot; total bobot <b>${slFmtBobot(b.total_bobot)}</b>` : ""}</div>
         ${b.waktu_mulai || b.token ? `
           <div class="bank-jadwal-ringkas">
             ${b.waktu_mulai ? `<div class="bj-baris">${proIkon("jam")}<span class="bj-teks">${esc(slFormatJadwal(b.waktu_mulai))} &ndash; ${esc(slFormatJadwal(b.waktu_selesai))}</span></div>` : ""}
@@ -441,6 +463,7 @@ async function slDetail(id) {
           <span class="badge info">Mapel: ${esc(namaMapel(bank.mapel_id))}</span>
           ${slChipKelas(bank.kelas)}
           <span class="chip">${proIkon("timer")} ${bank.durasi_menit} menit</span>
+          <span class="chip" id="sl-total-bobot" title="Nilai akhir siswa = skor yang diperoleh / total bobot x 100" hidden></span>
           ${bank.token ? `<span class="chip mono">${proIkon("kunci")} Token: ${esc(bank.token)}</span>` : ""}
         </div>
         ${bank.waktu_mulai ? `<p class="bank-jadwal-det">${proIkon("tanggal")}<span>Jadwal: <b>${esc(slFormatJadwal(bank.waktu_mulai))}</b> s/d <b>${esc(slFormatJadwal(bank.waktu_selesai))}</b></span></p>` : ""}
@@ -783,8 +806,13 @@ async function slMuat() {
     .eq("bank_id", bid).order("no", { ascending: true }).range(dari, dari + SL.per - 1);
   if (SL.jenis) q = q.eq("jenis", SL.jenis);
   if (SL.cari) q = q.ilike("pertanyaan", `%${SL.cari.replace(/[%_\\]/g, "\\$&")}%`);
-  const { data, error, count } = await q;
+  const [{ data, error, count }, petaBobot] = await Promise.all([q, slMuatBobot(bid)]);
   if (!SL.bank || SL.bank.id !== bid || !$("#sl-isi")) return;
+  const chipBobot = $("#sl-total-bobot");
+  if (chipBobot) {
+    chipBobot.hidden = !petaBobot;
+    if (petaBobot) chipBobot.innerHTML = `Total bobot: <b>${slFmtBobot(petaBobot.get(bid) || 0)}</b>`;
+  }
   if (error) { $("#sl-isi").innerHTML = `<div class="galat-blok"><b>Gagal memuat soal.</b><br>${esc(error.message)}<br><small>${SL_PETUNJUK_DB}</small></div>`; return; }
   if (!data.length && SL.hal > 1) { SL.hal--; return slMuat(); }
   SL.baris = data; SL.total = count || 0;
