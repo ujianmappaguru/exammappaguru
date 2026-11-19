@@ -76,9 +76,13 @@ function acDevId() {
   }
 }
 
+// Hanya untuk aplikasi yang DIPASANG (Tambah ke Layar Utama / PWA).
+// Jangan menyertakan "(display-mode: fullscreen)": media query itu juga menyala saat
+// halaman masuk layar penuh lewat Fullscreen API, sehingga sistem salah mengira
+// siswa memakai aplikasi terpasang dan menonaktifkan pemeriksaan layar penuh.
 function acStandalone() {
   return !!(navigator.standalone ||
-    (window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches)));
+    (window.matchMedia && matchMedia("(display-mode: standalone)").matches));
 }
 const acIphone = () => /iPhone|iPod/.test(navigator.userAgent || "");
 
@@ -675,10 +679,12 @@ function acPerbaruiStatus() {
 function acRender() {
   const k = AC.kondisi;
   if (typeof CBT !== "undefined" && CBT.submitting) { acHapusOverlay(); return; }
+  // Peringatan pelanggaran didahulukan dari "layar penuh diperlukan": siswa harus melihat
+// pesan pelanggarannya dulu; tombol di pesan itu sekaligus memulihkan layar penuh.
   const jenis = k.ambil_alih ? "ambil_alih" : k.kumpul ? "kumpul" : k.gps ? "gps"
-    : k.layar_penuh ? "layar_penuh" : k.peringatan ? "peringatan" : k.info_iphone ? "info_iphone" : null;
+    : k.peringatan ? "peringatan" : k.layar_penuh ? "layar_penuh" : k.info_iphone ? "info_iphone" : null;
   if (!jenis) { acHapusOverlay(); return; }
-  const kunci = jenis + "|" + (jenis === "peringatan" ? k.peringatan : jenis === "gps" ? String(AC.jarak) + AC.gpsMati + (AC.gpsKode || "") : "");
+  const kunci = jenis + "|" + (jenis === "peringatan" ? k.peringatan + "|" + k.layar_penuh : jenis === "gps" ? String(AC.jarak) + AC.gpsMati + (AC.gpsKode || "") : "");
   if (AC.jenisOverlay === kunci && document.querySelector("#ac-overlay")) return;
   AC.jenisOverlay = kunci;
 
@@ -707,7 +713,7 @@ function acRender() {
   } else if (jenis === "peringatan") {
     ikon = "⚠️"; judul = "Pelanggaran terdeteksi";
     isi = k.peringatan;
-    tombol = '<button class="btn btn-primary btn-besar" type="button" data-ac="lanjut">Saya Mengerti, Kembali ke Ujian</button>';
+    tombol = `<button class="btn btn-primary btn-besar" type="button" data-ac="lanjut">${k.layar_penuh ? "Saya Mengerti, Kembali ke Layar Penuh" : "Saya Mengerti, Kembali ke Ujian"}</button>`;
   } else if (jenis === "info_iphone") {
     ikon = "📱"; judul = "Tips layar penuh di iPhone";
     isi = "Safari di iPhone tidak mendukung layar penuh untuk halaman web. Agar ujian tampil penuh: ketuk tombol <b>Bagikan</b> di Safari &rarr; <b>Tambah ke Layar Utama</b> &rarr; buka ujian dari ikon yang baru muncul. Anda tetap dapat melanjutkan ujian ini sekarang.";
@@ -733,7 +739,11 @@ function acRender() {
     else if (a === "fs") { await acMintaFs(); if (acFsAktif()) { AC.kondisi.layar_penuh = false; AC.fsKeluarDicatat = false; } acRender(); }
     else if (a === "lanjut") {
       AC.kondisi.peringatan = "";
-      if (AC.perluFs && !acFsAktif()) { await acMintaFs(); if (!acFsAktif()) AC.kondisi.layar_penuh = true; }
+      if (AC.perluFs && !acFsAktif()) await acMintaFs(); // harus dipanggil langsung dari klik
+      if (AC.perluFs) {
+        if (acFsAktif()) { AC.kondisi.layar_penuh = false; AC.fsKeluarDicatat = false; }
+        else AC.kondisi.layar_penuh = true; // ditolak browser: tampilkan tombol "Masuk Layar Penuh"
+      }
       acRender();
     }
     else if (a === "info-ok") { AC.kondisi.info_iphone = false; try { sessionStorage.setItem("ac_info_iphone", "1"); } catch (_) {} acRender(); }
@@ -785,7 +795,7 @@ function acPasangSemua() {
           acCatat("pindah_aplikasi");
           acKirim({ tanpaGps: true });
         }
-      }, 800);
+      }, 300);
     } else if (AC.hiddenAt) {
       clearTimeout(AC.tHid);
       const dtk = Math.round((Date.now() - AC.hiddenAt) / 1000);
@@ -808,7 +818,7 @@ function acPasangSemua() {
       const a = document.activeElement;
       if (a && a.tagName === "SELECT") return; // pilihan dropdown bawaan HP
       if (!AC.blurDicatat) { AC.blurDicatat = true; acCatat("kehilangan_fokus"); }
-    }, 2500);
+    }, 800);
   });
   acPasang(window, "focus", () => { clearTimeout(AC.tBlur); AC.blurDicatat = false; });
 
@@ -834,10 +844,16 @@ function acPasangSemua() {
   const fsUbah = () => {
     if (!AC.aktif || !AC.perluFs) return;
     if (!acFsAktif()) {
-      if (!AC.fsKeluarDicatat) { AC.fsKeluarDicatat = true; acCatat("keluar_layar_penuh"); }
       AC.kondisi.layar_penuh = true;
+      if (!AC.fsKeluarDicatat) {
+        AC.fsKeluarDicatat = true;
+        // Tunda sebentar: bila penyebabnya pindah tab/aplikasi, itu yang dicatat (pesan lebih tepat)
+        clearTimeout(AC.tFs);
+        AC.tFs = setTimeout(() => { if (AC.aktif && !acFsAktif()) acCatat("keluar_layar_penuh"); acRender(); }, 500);
+      }
       acRender();
     } else {
+      clearTimeout(AC.tFs);
       AC.fsKeluarDicatat = false;
       AC.kondisi.layar_penuh = false;
       acRender();
@@ -961,8 +977,8 @@ AC.berhenti = function (selesai = false) {
   AC.aktif = false;
   AC.pelepas.forEach((f) => { try { f(); } catch (_) { /* abaikan */ } });
   AC.pelepas = [];
-  [AC.tmr, AC.tick, AC.tBlur, AC.tUkuran, AC.tHid].forEach((t) => { if (t) { clearTimeout(t); clearInterval(t); } });
-  AC.tmr = AC.tick = AC.tBlur = AC.tUkuran = AC.tHid = null;
+  [AC.tmr, AC.tick, AC.tBlur, AC.tUkuran, AC.tHid, AC.tFs].forEach((t) => { if (t) { clearTimeout(t); clearInterval(t); } });
+  AC.tmr = AC.tick = AC.tBlur = AC.tUkuran = AC.tHid = AC.tFs = null;
   if (tadi) {
     acLepasWakeLock();
     acKeluarFs();
