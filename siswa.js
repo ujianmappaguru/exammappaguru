@@ -1627,7 +1627,7 @@ async function tampilHalamanSiswa() {
 
   $("#judul-halaman").textContent = info.judul;
   $("#subjudul-halaman").textContent = info.sub || "";
-  document.title = `${info.judul} - Portal Siswa`;
+  document.title = `${info.judul} - Portal Siswa | EXAM MAPPAGURU`;
   document.querySelectorAll("#menu a").forEach((a) => a.removeAttribute("aria-current"));
   const aktif = $(`#menu a[href="#${info.key}"]`);
   if (aktif) aktif.setAttribute("aria-current", "page");

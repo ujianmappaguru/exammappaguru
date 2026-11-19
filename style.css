@@ -34,6 +34,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 .logo{flex:none;width:42px;height:42px;border-radius:12px;background:var(--biru);color:#fff;display:grid;place-items:center;
   box-shadow:0 4px 12px rgba(21,83,214,.35)}
 .logo svg{width:22px;height:22px}
+.logo{overflow:hidden;background:var(--navy);box-shadow:0 4px 12px rgba(10,31,79,.3)}
+.logo img{display:block;width:100%;height:100%;object-fit:cover}
+.merek-login .logo{box-shadow:0 0 0 1px rgba(255,255,255,.22)}
 
 /* ---------- tombol & isian ---------- */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:42px;
@@ -1866,3 +1869,10 @@ body.mode-cbt .cbt-shell input[type="search"]{-webkit-user-select:text;user-sele
 .pm-tanda{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:-1px}
 .pm-tanda.murid{background:var(--ok)}
 .pm-tanda.area{background:rgba(21,83,214,.18);border:1.5px solid var(--biru)}
+
+/* Monitor: reset massal pelanggaran */
+.mn-massal{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin:.2rem 0 .7rem;padding:.6rem .85rem;background:var(--biru-lembut);border:1px solid var(--biru-garis);border-radius:12px}
+.mn-massal-semua{display:inline-flex;align-items:center;gap:.5rem;font-weight:600;font-size:.9rem;cursor:pointer}
+.mn-massal input[type=checkbox],.mn-tabel input[type=checkbox]{width:18px;height:18px;cursor:pointer;accent-color:var(--biru)}
+.mn-tabel .mn-cek{width:2.2rem;text-align:center}
+.mn-massal .btn[disabled]{opacity:.5;cursor:not-allowed}

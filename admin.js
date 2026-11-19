@@ -172,7 +172,7 @@ function entriKartu(p, peran, password) {
   };
 }
 // Pilihan terakhir untuk cetak kartu (diingat selama halaman ini terbuka)
-const KARTU_OPSI = { judul: "KARTU LOGIN UJIAN ONLINE", ket: "", kop: true, perHal: 8 };
+const KARTU_OPSI = { judul: "KARTU LOGIN EXAM MAPPAGURU", ket: "", kop: true, perHal: 8 };
 
 async function kartuDaftarJenisUjian() {
   try {
@@ -230,7 +230,7 @@ function cetakKartu(daftar) {
     aksi: [
       { label: "Batal" },
       { label: "Cetak", kelas: "btn-primary", onClick: async () => {
-        O.judul = m.body.querySelector("#kt-judul").value.trim() || "KARTU LOGIN UJIAN ONLINE";
+        O.judul = m.body.querySelector("#kt-judul").value.trim() || "KARTU LOGIN EXAM MAPPAGURU";
         O.ket = m.body.querySelector("#kt-ket").value.trim();
         O.perHal = Number(m.body.querySelector("#kt-per").value) === 6 ? 6 : 8;
         O.kop = m.body.querySelector("#kt-kop").checked;
@@ -1589,7 +1589,7 @@ async function tampilHalaman() {
   const info = HALAMAN[nama];
   $("#judul-halaman").textContent = info.judul;
   $("#subjudul-halaman").textContent = info.sub || "";
-  document.title = info.judul + (PANEL === "guru" ? " - Panel Guru" : " - Panel Admin");
+  document.title = info.judul + (PANEL === "guru" ? " - Panel Guru" : " - Panel Admin") + " | EXAM MAPPAGURU";
   document.querySelectorAll("#menu a").forEach((a) => a.removeAttribute("aria-current"));
   const aktif = $(`#menu a[href="#${nama}"]`); if (aktif) aktif.setAttribute("aria-current", "page");
   $("#app").classList.remove("buka");

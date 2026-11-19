@@ -4,7 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a1f4f">
-<title>Panel Admin - Ujian Online</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EXAM MAPPAGURU">
+<link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script src="pwa.js"></script>
+<title>Panel Admin - EXAM MAPPAGURU</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -16,12 +23,10 @@
 <div class="app" id="app" hidden>
   <aside class="sisi" id="sisi" aria-label="Menu utama">
     <div class="merek">
-      <span class="logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 14l2.2 2.2L15.5 12"/></svg>
-      </span>
+      <span class="logo"><img src="icon-192.png" alt="" width="42" height="42"></span>
       <div>
-        <strong id="nama-sekolah"></strong>
-        <small>Panel Admin Ujian</small>
+        <strong>EXAM MAPPAGURU</strong>
+        <small id="nama-sekolah"></small>
       </div>
     </div>
     <nav id="menu"></nav>
@@ -50,7 +55,7 @@
     <footer class="app-footer">
       <div class="app-footer-inner">
         <span>Hak Cipta - <strong>Muhammad Hasratul</strong> - <span id="tahun-cipta">2026</span></span>
-        <span class="app-footer-sub" id="footer-sekolah">Panel Administrasi Ujian Online</span>
+        <span class="app-footer-sub" id="footer-sekolah">Panel Administrasi EXAM MAPPAGURU</span>
       </div>
     </footer>
   </div>

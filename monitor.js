@@ -14,6 +14,7 @@
 const MN = {
   ujianId: "", kelas: "", status: "", cari: "", urut: "kelas", jeda: 20,
   ujian: [], data: null, t0: 0, timer: null, memuat: false,
+  pilih: new Set(),   // siswa_id yang dicentang untuk reset massal
 };
 
 const mnEpochSekarang = () => (MN.data ? MN.data.server_epoch + (performance.now() - MN.t0) / 1000 : Date.now() / 1000);
@@ -98,7 +99,7 @@ async function rMonitor() {
     </div>
     <div id="mn-isi"><p class="memuat">Memuat...</p></div>`;
 
-  $("#mn-ujian").onchange = (e) => { MN.ujianId = e.target.value; MN.kelas = ""; mnMuat(); };
+  $("#mn-ujian").onchange = (e) => { MN.ujianId = e.target.value; MN.kelas = ""; MN.pilih = new Set(); mnMuat(); };
   $("#mn-kelas").onchange = (e) => { MN.kelas = e.target.value; mnGambar(); };
   $("#mn-status").onchange = (e) => { MN.status = e.target.value; mnGambar(); };
   $("#mn-cari").oninput = (e) => { MN.cari = e.target.value; mnGambar(); };
@@ -181,6 +182,12 @@ function mnGambar() {
     (b.pelanggaran - a.pelanggaran) ||
     urut(a.kelas, b.kelas) || urut(a.nama, b.nama));
 
+  // Reset massal: hanya siswa yang punya pelanggaran. Buang pilihan yang sudah tidak relevan.
+  const bisaReset = daftar.filter((b) => (b.pelanggaran || 0) > 0);
+  const idAdaPel = new Set(semua.filter((b) => (b.pelanggaran || 0) > 0).map((b) => b.siswa_id));
+  MN.pilih.forEach((id) => { if (!idAdaPel.has(id)) MN.pilih.delete(id); });
+  const adaPilih = !!ac.aktif && bisaReset.length > 0;
+
   const hit = (st) => semua.filter((b) => b.status === st).length;
   const nKerja = hit("mengerjakan"), nSelesai = hit("selesai"), nBelum = hit("belum");
   const nMasalah = semua.filter((b) => b.pelanggaran > 0).length;
@@ -204,8 +211,12 @@ function mnGambar() {
       ${kartu("📶", nPutus, "Senyap / terputus", nPutus ? "warn" : "ok")}
     </div>
     <p class="ket mn-ket">Diperbarui ${esc(mnJam(D.server_epoch))} WITA${MN.jeda ? ` · otomatis tiap ${MN.jeda} detik` : " · manual"}. Status &ldquo;Aktif&rdquo; berarti ada laporan dari perangkat siswa dalam ±${(ac.interval || 45) * 2} detik terakhir.</p>
+    ${adaPilih ? `<div class="mn-massal">
+      <label class="mn-massal-semua"><input type="checkbox" id="mn-pilih-semua"> Pilih semua yang ada pelanggaran (<span id="mn-n-bisa">${bisaReset.length}</span>)</label>
+      <button class="btn btn-kecil btn-danger" type="button" id="mn-reset-massal">Reset pelanggaran terpilih (<span id="mn-n-pilih">0</span>)</button>
+    </div>` : ""}
     ${daftar.length ? `<div class="tabel-bungkus mn-tabel"><table class="resp"><thead><tr>
-      <th>No</th><th>Siswa</th><th>Kelas</th><th>Status / Progres</th><th>Aktivitas</th><th>Perangkat</th>
+      ${adaPilih ? '<th class="mn-cek"></th>' : ""}<th>No</th><th>Siswa</th><th>Kelas</th><th>Status / Progres</th><th>Aktivitas</th><th>Perangkat</th>
       ${ac.wajib_gps ? "<th>Lokasi</th>" : ""}<th>Pelanggaran</th><th></th></tr></thead><tbody>
       ${daftar.map((b, i) => {
         const akt = mnStatusAktivitas(b);
@@ -222,6 +233,7 @@ function mnGambar() {
         if (b.lokasi_ok === true) lok = `<span class="badge ok">Di area</span>${b.jarak_m != null ? `<small>${Math.round(b.jarak_m)} m</small>` : ""}`;
         else if (b.lokasi_ok === false) lok = `<span class="badge off">Di luar area</span>${b.jarak_m != null ? `<small>${Math.round(b.jarak_m)} m</small>` : ""}`;
         return `<tr class="${mnPerluPerhatian(b, maks) ? "mn-baris-masalah" : ""}">
+          ${adaPilih ? `<td data-label="Pilih" class="mn-cek">${pel > 0 ? `<input type="checkbox" data-pilih="${b.siswa_id}" aria-label="Pilih ${esc(b.nama)}"${MN.pilih.has(b.siswa_id) ? " checked" : ""}>` : ""}</td>` : ""}
           <td data-label="No" class="angka">${i + 1}</td>
           <td data-label="Siswa"><b>${esc(b.nama)}</b><small class="mono">${esc(b.nisn)}</small></td>
           <td data-label="Kelas">${esc(b.kelas)}</td>
@@ -240,6 +252,53 @@ function mnGambar() {
 
   isi.querySelectorAll("[data-rinci]").forEach((b) => { b.onclick = () => mnRincian(b.dataset.rinci, b.dataset.nama); });
   isi.querySelectorAll("[data-reset]").forEach((b) => { b.onclick = () => mnReset(b.dataset.reset, b.dataset.nama); });
+
+  // --- reset massal ---
+  const idBisa = bisaReset.map((b) => b.siswa_id);
+  const perbaruiPilih = () => {
+    const n = idBisa.filter((id) => MN.pilih.has(id)).length;
+    const tn = $("#mn-n-pilih"); if (tn) tn.textContent = String(n);
+    const tb = $("#mn-reset-massal"); if (tb) tb.disabled = n === 0;
+    const ts = $("#mn-pilih-semua");
+    if (ts) { ts.checked = n > 0 && n === idBisa.length; ts.indeterminate = n > 0 && n < idBisa.length; }
+  };
+  isi.querySelectorAll("[data-pilih]").forEach((c) => {
+    c.onchange = () => { if (c.checked) MN.pilih.add(c.dataset.pilih); else MN.pilih.delete(c.dataset.pilih); perbaruiPilih(); };
+  });
+  const cekSemua = $("#mn-pilih-semua");
+  if (cekSemua) cekSemua.onchange = () => {
+    idBisa.forEach((id) => { if (cekSemua.checked) MN.pilih.add(id); else MN.pilih.delete(id); });
+    isi.querySelectorAll("[data-pilih]").forEach((c) => { c.checked = cekSemua.checked; });
+    perbaruiPilih();
+  };
+  const tombolMassal = $("#mn-reset-massal");
+  if (tombolMassal) tombolMassal.onclick = () => mnResetMassal(idBisa.filter((id) => MN.pilih.has(id)), semua);
+  perbaruiPilih();
+}
+
+// Reset pelanggaran banyak siswa sekaligus (memakai fungsi reset satuan, beberapa permintaan paralel).
+async function mnResetMassal(ids, semua) {
+  if (!ids.length) return;
+  const nama = (id) => ((semua.find((b) => b.siswa_id === id) || {}).nama) || id;
+  const contoh = ids.slice(0, 5).map((id) => esc(nama(id))).join(", ") + (ids.length > 5 ? `, dan ${ids.length - 5} lainnya` : "");
+  const ya = await konfirmasi(
+    `Reset hitungan pelanggaran <b>${ids.length} siswa</b> menjadi 0?<br><small>${contoh}</small><br><br>Riwayat kejadian tetap tersimpan, dan pengawas yang mereset tercatat.`,
+    { ya: `Ya, reset ${ids.length} siswa`, bahaya: true, judul: "Reset massal pelanggaran" });
+  if (!ya) return;
+  const tombol = $("#mn-reset-massal");
+  if (tombol) { tombol.disabled = true; tombol.textContent = "Mereset..."; }
+  const ujianId = MN.ujianId;
+  let ok = 0; const gagal = [];
+  await antre(ids, 4, async (id) => {
+    try {
+      const { error } = await sb.rpc("reset_pelanggaran_ujian", { p_ujian_id: ujianId, p_siswa_id: id });
+      if (error) throw error;
+      ok++; MN.pilih.delete(id);
+    } catch (e) { gagal.push({ id, pesan: (e && e.message) || String(e) }); }
+  });
+  if (!gagal.length) toast(`Pelanggaran ${ok} siswa direset.`, "ok");
+  else toast(`${ok} siswa berhasil direset, ${gagal.length} gagal: ${gagal[0].pesan}`, "error");
+  mnMuat(true).catch(() => {}).then(() => { if (ujianId === MN.ujianId) mnGambar(); });
 }
 
 async function mnReset(siswaId, nama) {
