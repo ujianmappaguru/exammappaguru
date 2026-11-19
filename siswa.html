@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a1f4f">
+<title>SISWA - EXAM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="layar-memuat" role="status">Memuat portal siswa...</div>
+
+<div class="app" id="app" hidden>
+  <aside class="sisi" aria-label="Menu utama siswa">
+    <div class="merek">
+      <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg></span>
+      <div><strong id="nama-sekolah">Ujian Online</strong><small>Portal Peserta Didik</small></div>
+    </div>
+    <nav id="menu"></nav>
+    <div class="pengguna">
+      <div class="pengguna-info">
+        <span class="pengguna-avatar" id="avatar-saya">S</span>
+        <div>
+          <div id="nama-saya">-</div>
+          <small id="kelas-saya">Peserta Didik</small>
+        </div>
+      </div>
+      <button class="btn btn-kecil" id="btn-keluar" type="button">Keluar</button>
+    </div>
+  </aside>
+
+  <div class="tirai" id="tirai"></div>
+
+  <div class="utama">
+    <header class="bar">
+      <button class="btn btn-kecil" id="btn-menu" type="button" aria-label="Buka menu">&#9776; Menu</button>
+      <div class="bar-judul">
+        <h1 id="judul-halaman">Dashboard Siswa</h1>
+        <span class="bar-sub" id="subjudul-halaman">Identitas peserta, jadwal ujian, dan riwayat nilai</span>
+      </div>
+      <div class="bar-kanan">
+        <span class="badge info" id="badge-nisn" style="display:none"></span>
+      </div>
+    </header>
+    <main id="konten" tabindex="-1"></main>
+    <footer class="app-footer">
+      <div class="app-footer-inner">
+        <span>&copy; <span id="tahun-cipta">2026</span> <strong id="footer-sekolah">Ujian Online</strong>. Seluruh hak cipta dilindungi.</span>
+        <span class="app-footer-sub">Portal Ujian Berbasis Online &bull; Peserta Didik</span>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script src="siswa.js"></script>
+</body>
+</html>
