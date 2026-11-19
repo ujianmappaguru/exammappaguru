@@ -984,6 +984,7 @@ function renderKerangkaCBT() {
             <button type="button" data-font="normal" class="aktif" title="Huruf Normal">A</button>
             <button type="button" data-font="besar" title="Huruf Besar">A+</button>
           </div>
+          ${typeof ZOOM !== "undefined" ? `<span class="zoom-cbt">${ZOOM.html()}</span>` : ""}
           <div class="cbt-timer" id="cbt-timer-box" aria-live="polite">
             <span class="cbt-timer-label">Sisa Waktu</span>
             <strong class="mono" id="cbt-timer-teks">--:--:--</strong>
@@ -1046,6 +1047,8 @@ function renderKerangkaCBT() {
       <footer class="cbt-footer">${esc(CONFIG.NAMA_SEKOLAH)} - ${tahunWITA()}</footer>
     </div>
   `;
+
+  if (typeof ZOOM !== "undefined") ZOOM.terapkan();
 
   // Event Ukuran Font
   konten().querySelectorAll("[data-font]").forEach((btn) => {
