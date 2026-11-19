@@ -397,6 +397,7 @@ async function slDaftar() {
           ${b.aktif ? "Atur / Nonaktifkan" : "Aktifkan Ujian"}
         </button>` : ""}
         <a class="btn btn-kecil ${slAdmin() ? "" : "btn-primary"}" href="#soal/${b.id}">${slAdmin() ? "Soal" : "Isi Soal"}</a>
+        <button class="btn btn-kecil" data-aksi="preview-bank" data-id="${b.id}" title="Lihat soal seperti tampilan siswa saat ujian">Preview</button>
         ${slAdmin() ? `<span class="bank-sek"><button class="btn btn-kecil" data-aksi="ubah-bank" data-id="${b.id}">Ubah</button>
         <button class="btn btn-kecil btn-bahaya-halus" data-aksi="hapus-bank" data-id="${b.id}">Hapus</button></span>` : ""}
       </div>
@@ -432,6 +433,7 @@ async function slDaftar() {
   konten().onclick = (e) => {
     const b = e.target.closest("[data-aksi]"); if (!b) return;
     const bank = banks.find((x) => x.id === b.dataset.id);
+    if (b.dataset.aksi === "preview-bank" && bank) return slPreview(bank);
     if (!slAdmin()) return;
     if (b.dataset.aksi === "buat-bank") slModalBank(null);
     if (b.dataset.aksi === "atur-ujian" && bank) slModalAturUjian(bank);
@@ -483,6 +485,7 @@ async function slDetail(id) {
           ${Object.entries(JENIS).map(([k, v]) => `<option value="${k}" ${SL.jenis === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
       </div>
       <div class="alat-kanan">
+        <button class="btn" data-aksi="preview" title="Lihat soal seperti tampilan siswa saat ujian">Preview Soal</button>
         <button class="btn" data-aksi="impor">Impor dari Word</button>
         <button class="btn btn-primary" data-aksi="tambah">Tambah soal</button>
       </div>
@@ -508,6 +511,7 @@ async function slDetail(id) {
     const a = b.dataset.aksi, sid = b.dataset.id;
     if (a === "tambah") slModal(null);
     if (a === "impor") slImpor();
+    if (a === "preview") slPreview(SL.bank);
     if (a === "lihat") slLihat(sid);
     if (a === "ubah") slUbah(sid);
     if (a === "hapus") slHapus([sid]);
@@ -521,6 +525,18 @@ async function slDetail(id) {
     }
   };
   await slMuat();
+}
+
+// ---------- preview soal (admin & guru): preview.js dimuat saat pertama dipakai ----------
+function slPreview(bank) {
+  if (!bank) return;
+  const jalan = () => bukaPreviewBank(bank.id, bank.nama, bank.durasi_menit);
+  if (typeof bukaPreviewBank === "function") return jalan();
+  const sc = document.createElement("script");
+  sc.src = "preview.js";
+  sc.onload = jalan;
+  sc.onerror = () => toast("Gagal memuat preview.js. Pastikan berkas preview.js sudah diunggah.", "error");
+  document.head.appendChild(sc);
 }
 
 // =====================================================================
