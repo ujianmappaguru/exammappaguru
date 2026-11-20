@@ -20,6 +20,7 @@ const S = {
 
 // State khusus ruang ujian CBT aktif
 const CBT = {
+  izinKeluar: false, // true hanya sesaat saat siswa keluar lewat tombol Daftar yang sah
   aktif: false,
   ujian: null,
   sesi: null,
@@ -810,6 +811,7 @@ function perbaruiIndikatorSimpan(teks) {
 }
 
 async function bukaRuangUjian(ujianId) {
+  CBT.izinKeluar = false;
   hentikanTimerCBT();
   konten().innerHTML = `<div class="memuat">Menyiapkan lembar soal ujian...</div>`;
 
@@ -898,10 +900,12 @@ async function bukaRuangUjian(ujianId) {
     const jenisUj = (ujInfo && ujInfo.jenis_ujian) || data.ujian.jenis_ujian || "";
     $("#subjudul-halaman").textContent = `${jenisUj ? jenisUj + " • " : ""}${namaMapel(data.ujian.mapel_id)} • ${CBT.soal.length} Soal`;
 
+    CBT.keluarHabis = false;
     renderKerangkaCBT();
     mulaiCountdownCBT();
     perangkatMulai();
     AC.mulai(data.ujian.id, () => kumpulkanUjianSekarang("pelanggaran"));
+    terapkanBatasKeluarDaftar(data.ujian.id); // jatah kembali ke daftar (dicek ke server)
   } catch (err) {
     CBT.aktif = false;
     AC.berhenti();
@@ -963,6 +967,22 @@ function mulaiCountdownCBT() {
 
   updateJam();
   CBT.timerId = setInterval(updateJam, 1000);
+}
+
+// Jatah kembali ke daftar ujian habis: tombol abu-abu & tidak bisa diklik.
+function matikanTombolDaftar() {
+  CBT.keluarHabis = true;
+  const b = $("#cbt-btn-keluar");
+  if (!b) return;
+  b.disabled = true;
+  b.innerHTML = "&larr; Daftar (habis)";
+  b.title = "Kesempatan kembali ke daftar ujian sudah habis";
+}
+
+async function terapkanBatasKeluarDaftar(ujianId) {
+  const st = await AC.statusKeluarDaftar(ujianId);
+  if (!st || st.sisa > 0) return;
+  if (CBT.aktif && CBT.ujian && CBT.ujian.id === ujianId) matikanTombolDaftar();
 }
 
 function renderKerangkaCBT() {
@@ -1097,11 +1117,22 @@ function renderKerangkaCBT() {
   $("#cbt-kumpulkan-btn").onclick = () => konfirmasiKumpulkanUjian();
   $("#cbt-selesai-utama").onclick = () => konfirmasiKumpulkanUjian();
 
-  // Tombol Kembali ke Daftar
+  // Tombol Kembali ke Daftar (jatah dibatasi; server yang menghitung)
   $("#cbt-btn-keluar").onclick = async () => {
+    const tombol = $("#cbt-btn-keluar");
+    if (!tombol || tombol.disabled) return;
+    tombol.disabled = true;
+    const boleh = await AC.catatKeluarDaftar(CBT.ujian.id, false);
+    if (!boleh) {
+      matikanTombolDaftar();
+      toast("Kesempatan kembali ke daftar ujian sudah habis. Silakan lanjutkan mengerjakan.", "error");
+      return;
+    }
     await simpanProgresKeServer(true);
+    CBT.izinKeluar = true;
     location.hash = "ujian";
   };
+  if (CBT.keluarHabis) matikanTombolDaftar();
 
   renderSoalAktif();
 }
@@ -1341,7 +1372,7 @@ function konfirmasiKumpulkanUjian() {
   const kosongCount = CBT.soal.length - terjawab;
   const raguCount = CBT.ragu.size;
 
-  tampilModal("Kumpulkan Jawaban Ujian?", `
+  const modalKirim = tampilModal("Kumpulkan Jawaban Ujian?", `
     <p>Pastikan Anda telah memeriksa seluruh jawaban sebelum mengumpulkan ujian <b>${esc(CBT.ujian.judul)}</b>.</p>
     <div class="hasil-rincian-angka" style="margin:1rem 0">
       <div class="badge ok">Terjawab: ${terjawab}</div>
@@ -1349,11 +1380,16 @@ function konfirmasiKumpulkanUjian() {
       <div class="badge off">Belum Dijawab: ${kosongCount}</div>
     </div>
     ${kosongCount > 0 ? `<div class="catatan">Masih ada <b>${kosongCount} soal</b> yang belum dijawab. Apakah Anda tetap yakin ingin mengakhiri ujian?</div>` : ""}
+    <label style="display:flex;gap:.6rem;align-items:flex-start;margin-top:1rem;cursor:pointer;font-weight:600">
+      <input type="checkbox" id="cbt-cek-selesai" style="width:1.2rem;height:1.2rem;margin-top:.1rem;flex:none">
+      <span>Saya telah selesai mengerjakan ujian ini.</span>
+    </label>
   `, {
     aksi: [
       { label: "Periksa Kembali" },
       {
-        label: "Ya, Kumpulkan Sekarang",
+        id: "kirim",
+        label: "Kirim Ujian",
         kelas: "btn-primary",
         onClick: async () => {
           await kumpulkanUjianSekarang(false);
@@ -1361,6 +1397,14 @@ function konfirmasiKumpulkanUjian() {
       },
     ],
   });
+
+  // Tombol "Kirim Ujian" baru aktif setelah siswa mencentang "selesai".
+  const cekSelesai = modalKirim.body.querySelector("#cbt-cek-selesai");
+  const tombolKirim = modalKirim.tombol.kirim;
+  if (cekSelesai && tombolKirim) {
+    tombolKirim.disabled = true;
+    cekSelesai.onchange = () => { tombolKirim.disabled = !cekSelesai.checked; };
+  }
 }
 
 async function kumpulkanUjianSekarang(otomatis = false) {
@@ -1613,12 +1657,28 @@ const MENU_SISWA = [
   { key: "dashboard", judul: "Dashboard", sub: "Identitas peserta & ringkasan akademik", ikon: "🏠", render: rDashboard },
   { key: "ujian", judul: "UJIAN", sub: "Daftar paket ujian & ruang pengerjaan soal", ikon: "📝", render: rUjian, lencanaId: "lencana-ujian" },
   { key: "hasil", judul: "Hasil Ujian", sub: "Rekap nilai & riwayat ujian selesai", ikon: "🏆", render: rHasil },
+  { key: "panduan", judul: "Panduan & Tata Tertib", sub: "Cara memakai aplikasi, tata cara & tata tertib ujian", ikon: "📖", render: () => rPanduan() },
 ];
 
 const HALAMAN_SISWA = {};
 MENU_SISWA.forEach((m) => { HALAMAN_SISWA[m.key] = m; });
 
+// Penjaga alamat saat ujian berlangsung: siswa tidak boleh pindah halaman dengan
+// mengetik #dashboard / #hasil / #panduan di address bar. Satu-satunya jalan keluar
+// adalah tombol Kumpulkan atau Daftar (yang jatahnya dihitung server).
+// Memakai replaceState supaya tidak memicu hashchange lagi dan ruang ujian tidak dimuat ulang.
+function jagaHashUjian() {
+  if (!CBT.aktif || !CBT.ujian) return false;
+  if (CBT.izinKeluar) { CBT.izinKeluar = false; return false; }
+  const ruang = `ujian/${CBT.ujian.id}`;
+  try { history.replaceState(history.state, "", "#" + ruang); } catch (_) { /* abaikan */ }
+  if (location.hash.slice(1) !== ruang) return false; // gagal memulihkan alamat: biarkan alur lama
+  toast("Ujian sedang berlangsung. Gunakan tombol Kumpulkan atau Daftar di layar untuk keluar.", "error");
+  return true;
+}
+
 async function tampilHalamanSiswa() {
+  if (jagaHashUjian()) return;
   const key = location.hash.slice(1).split("/")[0];
   const info = HALAMAN_SISWA[key] || HALAMAN_SISWA.dashboard;
 

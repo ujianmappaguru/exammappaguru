@@ -288,7 +288,9 @@ function slBadgeStatusUjian(b) {
 }
 
 // Nama guru per bank (fungsi info_guru_bank dari 19_admin_kelola_bank_guru_isi_soal.sql).
-// Guru pengisi soal diutamakan; bila belum ada soal, tampil guru pengampu mapel.
+// Nama guru = SEMUA guru pengampu mapel bank ini pada kelas bank tsb (SQL 25).
+// Contoh: bank Bahasa Indonesia kelas 7, 8, 9 -> tampil guru BI kelas 7, 8, dan 9.
+// Bila belum ada penugasan sama sekali, cadangannya guru yang mengisi soal.
 async function slIsiNamaGuru(daftar) {
   let peta = new Map();
   try {
@@ -296,7 +298,7 @@ async function slIsiNamaGuru(daftar) {
     if (error) throw error;
     peta = new Map((data || []).map((r) => [r.bank_id, r]));
   } catch (_) { /* fungsi belum dipasang: nama guru dikosongkan saja */ }
-  daftar.forEach((b) => { const r = peta.get(b.id) || {}; b.guru = r.pengisi || r.pengampu || ""; });
+  daftar.forEach((b) => { const r = peta.get(b.id) || {}; b.guru = r.pengampu || r.pengisi || ""; });
   return daftar;
 }
 const slBarisGuru = (b) => `<div class="bank-guru">${proIkon("user")}<span>Guru: ${b.guru ? `<b>${esc(b.guru)}</b>` : '<span class="ket">belum ada guru ditugaskan</span>'}</span></div>`;

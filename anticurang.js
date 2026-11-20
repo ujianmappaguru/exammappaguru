@@ -738,7 +738,7 @@ function acRender() {
     const b = e.target.closest("[data-ac]");
     if (!b) return;
     const a = b.dataset.ac;
-    if (a === "daftar") { AC.berhenti(); location.hash = "ujian"; }
+    if (a === "daftar") { AC.catatKeluarDaftar(AC.ujianId, true); AC.berhenti(); if (typeof CBT !== "undefined") CBT.izinKeluar = true; location.hash = "ujian"; }
     else if (a === "fs") { await acMintaFs(); if (acFsAktif()) { AC.kondisi.layar_penuh = false; AC.fsKeluarDicatat = false; } acRender(); }
     else if (a === "lanjut") {
       AC.kondisi.peringatan = "";
@@ -905,6 +905,32 @@ function acPeriksaSyarat() {
   if (AC.perluFs && !acFsAktif()) { AC.kondisi.layar_penuh = true; }
   acRender();
 }
+
+// ---------------------------------------------------------------------
+//  Batas kembali ke daftar ujian (server yang menghitung jatahnya)
+// ---------------------------------------------------------------------
+// Mengembalikan { maks, terpakai, sisa } atau null bila batas tidak aktif / gagal dicek.
+AC.statusKeluarDaftar = async function (ujianId) {
+  try {
+    const { data, error } = await sb.rpc("status_keluar_daftar", { p_ujian_id: ujianId });
+    if (error || !data || data.batas !== true) return null;
+    return data;
+  } catch (_) { return null; }
+};
+
+// Mengembalikan false HANYA bila server menolak (jatah habis).
+// Gagal cek (offline, dsb.) tidak menahan siswa. paksa = true: keluar lewat layar blokir.
+AC.catatKeluarDaftar = async function (ujianId, paksa = false) {
+  try {
+    const batas = new Promise((r) => setTimeout(() => r(null), 5000));
+    const res = await Promise.race([
+      sb.rpc("catat_keluar_daftar", { p_ujian_id: ujianId, p_paksa: !!paksa }),
+      batas,
+    ]);
+    if (!res || res.error || !res.data) return true;
+    return res.data.ok !== false;
+  } catch (_) { return true; }
+};
 
 // ---------------------------------------------------------------------
 //  Mulai & berhenti

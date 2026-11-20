@@ -490,6 +490,26 @@ ol.langkah li.selesai em{color:var(--ok)}
 .ringkas-row b{display:block;font-size:.92rem}
 .ringkas-row small{display:block;color:var(--tinta-2);font-size:.8rem}
 
+/* Status & Jadwal Ujian di Beranda */
+.ujian-stat{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;margin-bottom:.9rem}
+.us{padding:.6rem .5rem;border-radius:12px;background:var(--kertas);border:1px solid var(--garis);text-align:center}
+.us b{display:block;font:800 1.5rem/1.1 var(--f-judul);color:var(--navy)}
+.us span{display:block;font-size:.74rem;font-weight:700;color:var(--tinta-2);margin-top:.15rem}
+.us-ok{background:var(--ok-lembut);border-color:transparent}.us-ok b{color:var(--ok)}
+.us-info{background:var(--biru-lembut);border-color:transparent}.us-info b{color:var(--biru)}
+.us-warn{background:var(--peringatan-lembut);border-color:transparent}
+.ujian-list{display:flex;flex-direction:column;gap:.5rem;max-height:330px;overflow:auto}
+.ujian-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.65rem .8rem;border-radius:12px;
+  background:var(--kertas);border:1px solid var(--garis);text-decoration:none;color:inherit}
+.ujian-row:hover{border-color:var(--biru-garis);background:var(--biru-lembut)}
+.ujian-info b{display:block;font-size:.92rem}
+.ujian-info small{display:block;color:var(--tinta-2);font-size:.8rem}
+.ujian-catatan{margin:.8rem 0 0;font-size:.82rem;color:var(--tinta-2)}
+@media(max-width:420px){.ujian-stat{grid-template-columns:repeat(2,1fr)}}
+
+.perhatian-tag{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.35rem}
+.perhatian-ok{padding:.9rem 1rem;border-radius:12px;background:var(--ok-lembut);color:var(--ok);font-weight:600}
+
 /* Checklist Ringkas di Beranda */
 ol.langkah-ringkas{margin:0;box-shadow:none}
 ol.langkah-ringkas a{padding:.75rem .9rem}
@@ -1910,3 +1930,37 @@ body:not(.mode-cbt) .app{grid-template-columns:min(calc(260px * var(--zoom-app))
   .zoom-sisi .zoom-ctrl button{padding:.5rem .8rem}
   .zoom-cbt{display:inline-flex}
 }
+
+
+/* ---------- Panduan & Tata Tertib ---------- */
+.pdn-hero{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;margin-bottom:1.1rem;padding:1.4rem 1.5rem;
+  border-radius:18px;color:#fff;background:linear-gradient(135deg,var(--navy),var(--navy-2));border-left:6px solid var(--amber)}
+.pdn-hero h2{font-size:clamp(1.3rem,3vw,1.8rem);margin:.35rem 0 .3rem}
+.pdn-hero p{margin:0;color:rgba(255,255,255,.82);max-width:58ch}
+.pdn-pill{display:inline-block;padding:.15rem .7rem;border-radius:999px;background:rgba(255,255,255,.16);font-size:.78rem;font-weight:700}
+.pdn-daftar{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:1.1rem}
+.pdn-chip{border:1px solid var(--garis-2);background:var(--putih);color:var(--tinta);border-radius:999px;padding:.4rem .85rem;
+  font:600 .85rem var(--f-judul,inherit);cursor:pointer;min-height:38px}
+.pdn-chip:hover{border-color:var(--biru);color:var(--biru);background:var(--biru-lembut)}
+.pdn-isi{display:flex;flex-direction:column;gap:.7rem;margin-bottom:1.1rem}
+.pdn-bagian{background:var(--putih);border:1px solid var(--garis);border-radius:16px;box-shadow:var(--bayang-s);overflow:hidden;scroll-margin-top:1rem}
+.pdn-bagian summary{display:flex;align-items:center;gap:.75rem;padding:1rem 1.2rem;cursor:pointer;font:800 1.02rem var(--f-judul,inherit);
+  color:var(--navy);list-style:none;min-height:48px}
+.pdn-bagian summary::-webkit-details-marker{display:none}
+.pdn-bagian summary::after{content:"+";margin-left:auto;font-size:1.4rem;line-height:1;color:var(--tinta-2)}
+.pdn-bagian[open] summary::after{content:"\2212"}
+.pdn-bagian[open] summary{border-bottom:1px solid var(--garis);background:#f8fafd}
+.pdn-ikon{width:2.1rem;height:2.1rem;display:grid;place-items:center;border-radius:10px;background:var(--biru-lembut);font-size:1.1rem}
+.pdn-teks{padding:1rem 1.2rem 1.2rem;line-height:1.65}
+.pdn-teks p{margin:.4rem 0 .3rem}
+.pdn-teks ul,.pdn-teks ol{margin:.3rem 0 .8rem;padding-left:1.3rem}
+.pdn-teks li{margin:.3rem 0}
+.pdn-teks .catatan{margin-top:.6rem}
+.pdn-kontak{display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1.2rem 1.35rem;border-radius:18px;
+  background:var(--ok-lembut);border:1px solid #bfe6d2;margin-bottom:1.4rem}
+.pdn-kontak h3{margin:0 0 .15rem}
+.pdn-kontak p{margin:.1rem 0;color:var(--tinta-2)}
+.pdn-kontak-ikon{font-size:2rem}
+.pdn-kontak .btn{margin-left:auto}
+.pdn-hp a{font:800 1.4rem var(--f-judul,inherit);color:var(--navy);text-decoration:none;letter-spacing:.02em}
+@media(max-width:600px){.pdn-kontak .btn{margin-left:0;width:100%}.pdn-hero .btn{width:100%}}

@@ -65,15 +65,26 @@ const muatGuru = async () => {
   S.penugasan = await semua("penugasan_guru", "id,guru_id,mapel_id,kelas_id");
 };
 async function muatRingkasanBank() {
+  const petakan = (data) => (data || []).map((b) => ({
+    id: b.id,
+    nama: b.nama,
+    mapel_id: b.mapel_id,
+    jumlah: (b.bank_soal && b.bank_soal[0] && b.bank_soal[0].count) || 0,
+    aktif: !!b.aktif,
+    waktu_mulai: b.waktu_mulai || null,
+    waktu_selesai: b.waktu_selesai || null,
+    durasi_menit: b.durasi_menit || null,
+    kelas: (b.bank_kelas || []).map((x) => x.kelas_id),
+  }));
   try {
-    const { data, error } = await sb.from("bank").select("id,nama,mapel_id,bank_soal(count)").order("nama").limit(1000);
-    if (error) throw error;
-    S.banks = (data || []).map((b) => ({
-      id: b.id,
-      nama: b.nama,
-      mapel_id: b.mapel_id,
-      jumlah: (b.bank_soal && b.bank_soal[0] && b.bank_soal[0].count) || 0,
-    }));
+    let { data, error } = await sb.from("bank")
+      .select("id,nama,mapel_id,aktif,waktu_mulai,waktu_selesai,durasi_menit,bank_kelas(kelas_id),bank_soal(count)")
+      .order("nama").limit(1000);
+    if (error) { // cadangan: kolom jadwal belum ada
+      ({ data, error } = await sb.from("bank").select("id,nama,mapel_id,bank_soal(count)").order("nama").limit(1000));
+      if (error) throw error;
+    }
+    S.banks = petakan(data);
     S.totalSoal = S.banks.reduce((acc, b) => acc + (b.jumlah || 0), 0);
   } catch (_) {
     S.banks = [];
@@ -318,6 +329,41 @@ async function rBeranda() {
   const selesaiCount = langkah.filter((l) => l.ok).length;
   const persenSiap = Math.round((selesaiCount / langkah.length) * 100);
 
+  // Status & jadwal ujian (jam server)
+  const kini = sekarangMs();
+  const statusUjian = (b) => {
+    if (!b.aktif) return "draft";
+    const m = b.waktu_mulai ? new Date(b.waktu_mulai).getTime() : 0;
+    const e = b.waktu_selesai ? new Date(b.waktu_selesai).getTime() : 0;
+    if (e && kini > e) return "selesai";
+    if (m && kini < m) return "terjadwal";
+    return "berlangsung";
+  };
+  const URUT_STATUS = { berlangsung: 0, terjadwal: 1, selesai: 2, draft: 3 };
+  const LABEL_STATUS = {
+    berlangsung: ["ok", "Berlangsung"], terjadwal: ["info", "Terjadwal"],
+    selesai: ["warn", "Berakhir"], draft: ["off", "Draft"],
+  };
+  const ujianList = S.banks.map((b) => ({ ...b, st: statusUjian(b) }));
+  const hitungStatus = (k) => ujianList.filter((u) => u.st === k).length;
+  const ujianTampil = ujianList.filter((u) => u.st !== "draft").sort((a, b) =>
+    URUT_STATUS[a.st] - URUT_STATUS[b.st]
+    || (a.st === "selesai"
+      ? new Date(b.waktu_selesai || 0) - new Date(a.waktu_selesai || 0)
+      : new Date(a.waktu_mulai || 0) - new Date(b.waktu_mulai || 0))
+  ).slice(0, 6);
+
+  // Bank yang perlu perhatian: kosong, belum punya kelas, atau belum ada guru pengampu
+  const masalahBank = (b) => {
+    const m = [];
+    if (b.jumlah === 0) m.push(b.aktif ? ["off", "Aktif tapi belum ada soal"] : ["warn", "Belum ada soal"]);
+    if (!b.kelas.length) m.push(["warn", "Belum punya kelas"]);
+    else if (!S.penugasan.some((p) => p.mapel_id === b.mapel_id && b.kelas.includes(p.kelas_id))) m.push(["warn", "Belum ada guru pengampu"]);
+    return m;
+  };
+  const perhatian = S.banks.map((b) => ({ b, m: masalahBank(b) })).filter((x) => x.m.length)
+    .sort((x, y) => (y.m.some((t) => t[0] === "off") - x.m.some((t) => t[0] === "off")) || y.m.length - x.m.length || urut(namaMapel(x.b.mapel_id), namaMapel(y.b.mapel_id)));
+
   // Distribusi siswa per kelas
   const distKelas = S.kelas.map((k) => {
     const anggota = S.siswa.filter((s) => s.kelas_id === k.id);
@@ -482,13 +528,53 @@ async function rBeranda() {
       <div class="panel-mewah">
         <div class="panel-kepala">
           <div>
-            <h3>Panduan Persiapan Ujian</h3>
-            <p class="ket">Checklist tahapan konfigurasi awal</p>
+            <h3>Status &amp; Jadwal Ujian</h3>
+            <p class="ket">Pantau ujian yang berlangsung dan akan datang</p>
           </div>
+          <a class="btn btn-kecil" href="#soal">Kelola</a>
         </div>
-        <ol class="langkah langkah-ringkas">${langkah.map((l) => `
-          <li class="${l.ok ? "selesai" : ""}"><a href="#${l.h}"><strong>${esc(l.j)}</strong><span class="k">${esc(l.k)}</span><em>${l.s}</em></a></li>`).join("")}
-        </ol>
+        <div class="ujian-stat">
+          <div class="us us-ok"><b>${hitungStatus("berlangsung")}</b><span>Berlangsung</span></div>
+          <div class="us us-info"><b>${hitungStatus("terjadwal")}</b><span>Terjadwal</span></div>
+          <div class="us us-warn"><b>${hitungStatus("selesai")}</b><span>Berakhir</span></div>
+          <div class="us"><b>${hitungStatus("draft")}</b><span>Draft</span></div>
+        </div>
+        ${ujianTampil.length ? `
+        <div class="ujian-list">
+          ${ujianTampil.map((u) => {
+            const [kls, lbl] = LABEL_STATUS[u.st];
+            const kelas = u.kelas.map(namaKelas).sort(urut).join(", ");
+            return `<a class="ujian-row" href="#soal/${u.id}">
+              <div class="ujian-info">
+                <b>${esc(namaMapel(u.mapel_id))}</b>
+                <small>${esc(u.nama)}${kelas ? ` &middot; Kelas ${esc(kelas)}` : ""}</small>
+                <small class="mono">${u.waktu_mulai ? `${esc(waktu(u.waktu_mulai))} &ndash; ${esc(waktu(u.waktu_selesai))}` : "Jadwal belum diatur"}</small>
+              </div>
+              <span class="badge ${kls}">${lbl}</span>
+            </a>`;
+          }).join("")}
+        </div>` : kosong("Belum ada ujian aktif", "Aktifkan ujian dari menu Bank Soal, lalu jadwalnya tampil di sini.")}
+      </div>
+
+      <div class="panel-mewah">
+        <div class="panel-kepala">
+          <div>
+            <h3>Bank Soal Perlu Perhatian</h3>
+            <p class="ket">Bank yang kosong, belum punya kelas, atau belum ada guru pengampu</p>
+          </div>
+          <a class="btn btn-kecil" href="#soal">Buka Bank Soal</a>
+        </div>
+        ${!S.banks.length ? kosong("Belum ada bank soal", "Buat bank soal terlebih dahulu.")
+          : !perhatian.length ? `<div class="perhatian-ok">&#10003; Semua ${S.banks.length} bank soal sudah lengkap: ada soal, kelas, dan guru pengampu.</div>`
+          : `<div class="ujian-list">
+          ${perhatian.slice(0, 6).map(({ b, m }) => `<a class="ujian-row" href="#soal/${b.id}">
+            <div class="ujian-info">
+              <b>${esc(b.nama)}</b>
+              <small>${esc(namaMapel(b.mapel_id))}</small>
+              <div class="perhatian-tag">${m.map(([k, t]) => `<span class="badge ${k}">${t}</span>`).join("")}</div>
+            </div>
+          </a>`).join("")}
+        </div>${perhatian.length > 6 ? `<p class="ujian-catatan">dan ${perhatian.length - 6} bank lainnya. Buka menu Bank Soal untuk melihat semuanya.</p>` : ""}`}
       </div>
 
       <div class="panel-mewah">
@@ -1547,6 +1633,7 @@ const MENU_GURU = [
   { key: "soal", judul: "Bank Soal", sub: "Isi & kelola soal ujian", ikon: "📝", render: () => rSoal() },
   { key: "hasil", judul: "Hasil Ujian", sub: "Progres ujian, hasil & penilaian esai", ikon: "📊", render: () => rHasil() },
   { key: "monitor", judul: "Monitor Ujian", sub: "Pantau siswa selama ujian berlangsung", ikon: "📡", render: () => rMonitor() },
+  { key: "panduan", judul: "Panduan & Tata Tertib", sub: "Cara memakai aplikasi, tata cara & tata tertib ujian", ikon: "📖", render: () => rPanduan() },
 ];
 const MENU_UTAMA = [
   { key: "beranda", judul: "Beranda", sub: "Ringkasan & kendali utama", ikon: "🏠", render: rBeranda },
@@ -1555,6 +1642,7 @@ const MENU_UTAMA = [
   { key: "hasil", judul: "Hasil Ujian", sub: "Rekap nilai & status pengerjaan siswa", ikon: "📊", render: () => rHasil() },
   { key: "monitor", judul: "Monitor Ujian", sub: "Pantau siswa selama ujian berlangsung", ikon: "📡", render: () => rMonitor() },
   { key: "admin", judul: "Admin", sub: "Manajemen akun administrator", ikon: "🛡️", render: rAdmin },
+  { key: "panduan", judul: "Panduan & Tata Tertib", sub: "Cara memakai aplikasi, tata cara & tata tertib ujian", ikon: "📖", render: () => rPanduan() },
 ];
 const MENU_KHUSUS = [
   { key: "kartu", judul: "Kartu Login", sub: "Cetak & unduh kartu peserta", ikon: "🪪", render: rKartu },
