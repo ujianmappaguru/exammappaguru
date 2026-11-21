@@ -42,6 +42,9 @@ const CBT = {
   mulaiMs: 0,      // waktu mulai sesi (ms)
   ingat: {},       // pengingat sisa waktu yang sudah ditampilkan {10:true,5:true,1:true}
   retryTimer: null,
+  kunciPaksaMs: 0,   // batas buka tombol kumpul menurut server (ms), bila server menolak
+  kunciTampil: false,
+  kumpulUlangTimer: null, // ulang kumpul otomatis (waktu habis) bila gagal terkirim
 };
 
 // Jeda sinkron rutin ke server. Jawaban SELALU langsung masuk localStorage;
@@ -893,6 +896,8 @@ async function bukaRuangUjian(ujianId) {
     CBT.akhirMs = Math.min(batasDurasiMs, batasJadwalMs);
     CBT.mulaiMs = mulaiMs;
     CBT.ingat = {};
+    CBT.kunciPaksaMs = 0; // koreksi dari server bila ia menolak kumpul sebelum waktu minimal
+    CBT.kunciTampil = false;
 
     document.body.classList.add("mode-cbt");
     $("#judul-halaman").textContent = data.ujian.judul;
@@ -926,6 +931,54 @@ async function bukaRuangUjian(ujianId) {
   }
 }
 
+// ---------------------------------------------------------------------
+//  Waktu minimal mengerjakan (pengaturan global, menu Pengaturan admin)
+//  Tampilan di sini hanya membantu siswa; penolakan sebenarnya di server
+//  (26_waktu_minimal.sql) memakai jam & mulai_pada milik server.
+// ---------------------------------------------------------------------
+function waktuMinimalDtk() {
+  const m = Number(AC.cfg && AC.cfg.waktu_minimal_menit) || 0;
+  if (m <= 0 || !CBT.mulaiMs || !CBT.akhirMs) return 0;
+  const rentang = (CBT.akhirMs - CBT.mulaiMs) / 1000;
+  return Math.max(0, Math.min(m * 60, rentang - 60)); // sama dengan aturan di server
+}
+
+function sisaKunciSelesaiDtk() {
+  const min = waktuMinimalDtk();
+  const bukaMs = Math.max(min ? CBT.mulaiMs + min * 1000 : 0, CBT.kunciPaksaMs || 0);
+  if (!bukaMs) return 0;
+  return Math.max(0, Math.ceil((bukaMs - sekarangMs()) / 1000));
+}
+
+function perbaruiKunciSelesai() {
+  const kunci = sisaKunciSelesaiDtk() > 0;
+  if (!kunci && !CBT.kunciTampil) return; // tidak ada yang perlu diubah
+  // Tombol tetap berlabel biasa; selama terkunci tampil abu-abu, tidak bisa diklik, dan ada keterangan.
+  const menit = Math.ceil(waktuMinimalDtk() / 60);
+  const ket = menit > 0
+    ? `Ujian baru bisa diselesaikan setelah ${menit} menit pengerjaan. Periksa kembali jawaban Anda.`
+    : "Ujian belum bisa diselesaikan karena waktu minimal pengerjaan belum tercapai. Periksa kembali jawaban Anda.";
+  [$("#cbt-kumpulkan-btn"), $("#cbt-selesai-utama")].forEach((b) => {
+    if (!b) return;
+    b.disabled = kunci;
+    b.style.filter = kunci ? "grayscale(1)" : "";
+  });
+  [$("#cbt-kunci-ket-samping"), $("#cbt-kunci-ket-utama")].forEach((el) => {
+    if (!el) return;
+    el.hidden = !kunci;
+    if (kunci) el.textContent = ket;
+  });
+  CBT.kunciTampil = kunci;
+}
+
+// Kembali ke aplikasi saat tombol masih terkunci: selaraskan jam dengan server
+// (di sebagian HP jam internal browser berhenti saat layar dikunci).
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !CBT.aktif || CBT.submitting) return;
+  if (sisaKunciSelesaiDtk() <= 0) return;
+  sinkronWaktuServer().then(perbaruiKunciSelesai).catch(() => {});
+});
+
 function mulaiCountdownCBT() {
   hentikanTimerCBT();
   const updateJam = () => {
@@ -949,6 +1002,7 @@ function mulaiCountdownCBT() {
     const menit = String(Math.floor((totalDetik % 3600) / 60)).padStart(2, "0");
     const detik = String(totalDetik % 60).padStart(2, "0");
     elTimer.textContent = `${jam}:${menit}:${detik}`;
+    perbaruiKunciSelesai();
 
     // Pengingat 10 / 5 / 1 menit. Hanya tampil saat batas baru saja terlewati (bukan saat dibuka ulang)
     // dan hanya bila durasi ujian cukup panjang (tidak muncul tepat di awal ujian pendek).
@@ -1034,6 +1088,7 @@ function renderKerangkaCBT() {
             <button class="btn btn-primary" type="button" id="cbt-next">Berikutnya &rarr;</button>
             <button class="btn btn-amber" type="button" id="cbt-selesai-utama" hidden>Selesai Ujian ✓</button>
           </div>
+          <p class="ket" id="cbt-kunci-ket-utama" hidden style="text-align:center;margin:.6rem 0 0"></p>
         </section>
 
         <!-- PANEL NAVIGASI NOMOR SOAL (Sidebar di Laptop/Tablet, Bottom-Sheet Drawer di HP) -->
@@ -1060,6 +1115,7 @@ function renderKerangkaCBT() {
             <button class="btn btn-amber btn-besar" type="button" id="cbt-kumpulkan-btn" style="width:100%">
               Kumpulkan Ujian
             </button>
+            <p class="ket" id="cbt-kunci-ket-samping" hidden style="text-align:center;margin:.5rem 0 0"></p>
           </div>
         </aside>
       </div>
@@ -1365,6 +1421,12 @@ function renderSoalAktif() {
 }
 
 function konfirmasiKumpulkanUjian() {
+  const kunciSisa = sisaKunciSelesaiDtk();
+  if (kunciSisa > 0) {
+    toast("Ujian belum bisa dikumpulkan. Waktu minimal pengerjaan belum tercapai.", "info");
+    perbaruiKunciSelesai();
+    return;
+  }
   let terjawab = 0;
   CBT.soal.forEach((s) => {
     if (cekSoalTerjawab(s, CBT.jawaban[s.id])) terjawab++;
@@ -1467,7 +1529,36 @@ async function kumpulkanUjianSekarang(otomatis = false) {
   } catch (err) {
     modalProses.tutup();
     CBT.submitting = false;
+    const ujianId = CBT.ujian && CBT.ujian.id;
+    const tahan = /WAKTU_MINIMAL:(\d+)/.exec((err && (err.message || err.details)) || "");
+
+    // Fungsi ini menghentikan timer ujian di awal. Bila pengumpulan gagal, ujian masih
+    // berjalan: hidupkan lagi timernya, kecuali waktu memang sudah habis (otomatis === true).
+    if (CBT.aktif && otomatis !== true) mulaiCountdownCBT();
+
+    if (tahan) {
+      // Ditolak server karena waktu minimal belum tercapai. Pengumpulan otomatis karena
+      // pelanggaran tidak menampilkan pesan: hitungan pelanggaran di server belum masuk,
+      // dan acKumpul mencoba lagi sendiri beberapa detik kemudian.
+      if (!otomatis) {
+        CBT.kunciPaksaMs = sekarangMs() + Number(tahan[1]) * 1000;
+        CBT.kunciTampil = true;
+        perbaruiKunciSelesai();
+        toast("Ujian belum bisa dikumpulkan. Waktu minimal pengerjaan belum tercapai.", "error");
+      }
+      return;
+    }
+
     toast("Gagal mengumpulkan ujian: " + (err.message || err), "error");
+
+    // Waktu habis lalu gagal terkirim (mis. sinyal putus): coba lagi sendiri sampai berhasil.
+    // (Kasus pelanggaran sudah diulang oleh acKumpul di anticurang.js.)
+    if (otomatis === true) {
+      clearTimeout(CBT.kumpulUlangTimer);
+      CBT.kumpulUlangTimer = setTimeout(() => {
+        if (CBT.aktif && !CBT.submitting && CBT.ujian && CBT.ujian.id === ujianId) kumpulkanUjianSekarang(true);
+      }, 8000);
+    }
   }
 }
 

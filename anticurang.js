@@ -104,6 +104,10 @@ function acFsDidukung() {
   return !!((d.fullscreenEnabled || d.webkitFullscreenEnabled) && (e.requestFullscreen || e.webkitRequestFullscreen));
 }
 const acFsAktif = () => !!(document.fullscreenElement || document.webkitFullscreenElement) || acStandalone();
+// Fullscreen sungguhan saja (tanpa menganggap mode standalone/PWA sebagai layar penuh).
+const acFsNyata = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+// Layar penuh diwajibkan oleh pengaturan dan didukung perangkat (termasuk PWA Android).
+const acMauFs = () => !!(AC.cfg && AC.cfg.wajib_layar_penuh && acFsDidukung());
 
 async function acMintaFs() {
   const e = document.documentElement;
@@ -716,7 +720,8 @@ function acRender() {
   } else if (jenis === "peringatan") {
     ikon = "⚠️"; judul = "Pelanggaran terdeteksi";
     isi = k.peringatan;
-    tombol = `<button class="btn btn-primary btn-besar" type="button" data-ac="lanjut">${k.layar_penuh ? "Saya Mengerti, Kembali ke Layar Penuh" : "Saya Mengerti, Kembali ke Ujian"}</button>`;
+    const kembaliFs = k.layar_penuh || (acMauFs() && !acFsNyata());
+    tombol = `<button class="btn btn-primary btn-besar" type="button" data-ac="lanjut">${kembaliFs ? "Saya Mengerti, Kembali ke Layar Penuh" : "Saya Mengerti, Kembali ke Ujian"}</button>`;
   } else if (jenis === "info_iphone") {
     ikon = "📱"; judul = "Tips layar penuh di iPhone";
     isi = "Safari di iPhone tidak mendukung layar penuh untuk halaman web. Agar ujian tampil penuh: ketuk tombol <b>Bagikan</b> di Safari &rarr; <b>Tambah ke Layar Utama</b> &rarr; buka ujian dari ikon yang baru muncul. Anda tetap dapat melanjutkan ujian ini sekarang.";
@@ -742,7 +747,9 @@ function acRender() {
     else if (a === "fs") { await acMintaFs(); if (acFsAktif()) { AC.kondisi.layar_penuh = false; AC.fsKeluarDicatat = false; } acRender(); }
     else if (a === "lanjut") {
       AC.kondisi.peringatan = "";
-      if (AC.perluFs && !acFsAktif()) await acMintaFs(); // harus dipanggil langsung dari klik
+      // Harus dipanggil langsung dari klik. Juga untuk PWA/standalone (AC.perluFs = false):
+      // di sana layar penuh tidak dihitung pelanggaran, tetapi tetap dipulihkan setelah peringatan.
+      if (acMauFs() && !acFsNyata()) await acMintaFs();
       if (AC.perluFs) {
         if (acFsAktif()) { AC.kondisi.layar_penuh = false; AC.fsKeluarDicatat = false; }
         else AC.kondisi.layar_penuh = true; // ditolak browser: tampilkan tombol "Masuk Layar Penuh"

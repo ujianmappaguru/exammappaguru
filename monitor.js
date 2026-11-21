@@ -400,6 +400,11 @@ async function rPengaturanAntiCurang(el) {
         <input class="input" type="number" min="20" max="180" data-ac-f="interval_detik" value="${ang(c.interval_detik, 45)}"></label>
       <p class="ket" id="ac-beban"></p>
 
+      <div class="sl-judul" style="margin:1rem 0 .4rem">Waktu minimal mengerjakan</div>
+      <label class="f">Siswa baru boleh mengumpulkan setelah (menit)
+        <input class="input" type="number" min="0" max="600" step="1" data-ac-f="waktu_minimal_menit" value="${ang(c.waktu_minimal_menit, 0)}"></label>
+      <p class="ket">Isi <b>0</b> untuk menonaktifkan. Berlaku untuk semua ujian dan tetap aktif walau fitur anti curang dimatikan. Dihitung sejak siswa mulai mengerjakan memakai jam server, jadi mengubah jam HP tidak berpengaruh. Bila angka ini lebih besar dari durasi sebuah ujian, batasnya otomatis dipotong sampai 1 menit sebelum waktu habis. Pengumpulan otomatis karena batas pelanggaran tidak ikut ditahan.</p>
+
       <div style="margin-top:.8rem"><button class="btn btn-primary" id="ac-simpan" type="button">Simpan anti curang</button></div>
     </div>`;
 
@@ -460,10 +465,11 @@ async function rPengaturanAntiCurang(el) {
         maks_pelanggaran: angka("maks_pelanggaran", 1, 20, "Batas pelanggaran"),
         aksi_melebihi: f("aksi_melebihi").value === "catat" ? "catat" : "kumpul",
         interval_detik: angka("interval_detik", 20, 180, "Interval laporan"),
+        waktu_minimal_menit: angka("waktu_minimal_menit", 0, 600, "Waktu minimal"),
         diubah: new Date().toISOString(),
       };
       const { error: e1 } = await sb.from("pengaturan_anticurang").upsert(isi);
-      if (e1) throw new Error(e1.message);
+      if (e1) throw new Error(e1.message + (/waktu_minimal_menit/i.test(e1.message || "") ? ". Jalankan 26_waktu_minimal.sql di Supabase." : ""));
       try { await sb.from("log_aktivitas").insert({ pelaku: S.me.id, aksi: "ubah_pengaturan_anticurang", target: isi.aktif ? "aktif" : "nonaktif" }); } catch (_) { /* abaikan */ }
       toast("Pengaturan anti curang disimpan.", "ok");
     } catch (err) {
