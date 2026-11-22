@@ -1964,3 +1964,60 @@ body:not(.mode-cbt) .app{grid-template-columns:min(calc(260px * var(--zoom-app))
 .pdn-kontak .btn{margin-left:auto}
 .pdn-hp a{font:800 1.4rem var(--f-judul,inherit);color:var(--navy);text-decoration:none;letter-spacing:.02em}
 @media(max-width:600px){.pdn-kontak .btn{margin-left:0;width:100%}.pdn-hero .btn{width:100%}}
+
+
+/* =====================================================================
+   HP: tidak ada teks terpotong "..." dan tidak ada yang melebar keluar layar.
+   Hanya mengatur tampilan: tidak menyentuh logika ujian maupun lapisan
+   anti curang (.ac-*).
+   ===================================================================== */
+
+/* Header atas: judul & subjudul turun baris, tidak dipotong "..." */
+@media(max-width:900px){
+  .bar-judul h1,.bar-judul .bar-sub{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}
+  .bar-judul h1{font-size:1.12rem;line-height:1.25}
+  .bar-judul .bar-sub{display:block;font-size:.8rem;line-height:1.3;margin-top:.1rem}
+}
+
+/* Halaman admin/guru/siswa di HP: isi tidak boleh lebih lebar dari layar */
+@media(max-width:760px){
+  body:not(.mode-cbt) .utama{max-width:100vw;overflow-x:clip}
+
+  /* kolom filter & tombol di atas tabel selebar layar */
+  .alat-kiri,.alat-kanan{width:100%}
+  .alat .pilih,.alat .input{width:100%;min-width:0;max-width:100%}
+  .alat-kanan .btn{flex:1 1 auto}
+
+  /* kartu hasil/monitor: isi boleh turun baris, tidak dipaksa satu baris */
+  table.resp td{flex-wrap:wrap;min-width:0}
+  table.resp td>*{min-width:0;max-width:100%}
+  .hp-siswa{min-width:0}
+  .hp-waktu,.hp-mini small{white-space:normal}
+  .hp-mini{min-width:0}
+  table.resp td.aksi{white-space:normal;justify-content:flex-start;gap:.4rem}
+  td.aksi .btn{margin-right:0}
+
+  /* kartu Hasil Ujian: nama + NISN di kiri, nilai di kanan, sisanya di bawah */
+  .hp-tabel table.resp tr{display:flex;flex-wrap:wrap;align-items:center;column-gap:.6rem}
+  .hp-tabel table.resp td{order:3;flex:0 0 100%}
+  .hp-tabel table.resp td[data-label="Siswa"]{order:1;flex:1 1 0;min-width:0}
+  .hp-tabel table.resp td[data-label="Nilai"]{order:2;flex:none;width:auto}
+  .hp-tabel table.resp td[data-label="Siswa"]::before,
+  .hp-tabel table.resp td[data-label="Nilai"]::before{display:none}
+}
+
+/* Saat ujian di HP: topbar (sinyal, baterai, ukuran huruf, zoom, timer) rata tengah */
+@media(max-width:767px){
+  .cbt-topbar{justify-content:center;text-align:center}
+  .cbt-top-kiri,.cbt-top-kanan{flex:1 1 100%;justify-content:center}
+  .cbt-perangkat{justify-content:center}
+  .cbt-timer{align-items:center;text-align:center}
+}
+
+/* Keterangan teks lengkap di bawah dropdown pilihan ujian (dropdown tertutup memotong teks panjang) */
+.pilih-ket{display:none;font-size:.85rem;line-height:1.35;color:var(--tinta-2);overflow-wrap:anywhere;margin:.35rem .1rem 0}
+.pilih-ket.selalu{display:block}
+@media(max-width:760px){
+  .pilih-ket{display:block}
+  .alat-kiri>.pilih-ket{flex:1 1 100%;margin:-.2rem .1rem .1rem}
+}

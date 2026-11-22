@@ -110,7 +110,42 @@ function kopHtml(pg, urlKiri, urlKanan) {
 .cetak-hal .cetak-tabel tr.st-tidak td{background:#fecaca!important}
 .cetak-hal .cetak-tabel tr.st-kumpul td{background:#bfdbfe!important}
 .cetak-hal .cetak-tabel tr.st-esai td{background:#fde68a!important}
-.cetak-hal .cetak-tabel tbody tr:hover td{background-color:inherit}`;
+.cetak-hal .cetak-tabel tbody tr:hover td{background-color:inherit}
+
+/* ---- Laporan pelanggaran (dibuka dari menu Monitor): isi 10 pt, kop tetap sama ---- */
+.cetak-hal.lp{font-size:10pt}
+.lp .cetak-bio{font-size:10pt}
+.lp .cetak-tabel{font-size:10pt}
+.lp .cetak-tabel td{vertical-align:top}
+.lp .lp-kej{display:flex;justify-content:center;line-height:1.3}
+.lp .lp-jam{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums;margin-right:2.2mm}
+.lp .lp-reset{font-style:italic}
+.lp .lp-catatan{font-size:8.5pt;font-style:italic;margin-top:.8mm}
+.lp .lp-rekap-bungkus{overflow-x:auto}
+.lp .lp-kartu-wrap{display:none}
+.lp .lp-kartu{border:1px solid #000;border-radius:2mm;padding:2.5mm 3mm;margin-bottom:2.5mm;break-inside:avoid;font-size:11pt}
+.lp .lp-k-atas{display:flex;align-items:flex-start}
+.lp .lp-k-no{flex:none;min-width:6mm;margin-right:2.5mm;text-align:right;font-weight:700}
+.lp .lp-k-nama{flex:1;min-width:0;margin-right:2.5mm;overflow-wrap:anywhere}
+.lp .lp-k-nama .nisn{font-size:9.5pt;color:#444}
+.lp .lp-k-jml{flex:none;text-align:center;border:1px solid #000;border-radius:1.5mm;padding:.6mm 2.2mm;font-weight:700;line-height:1.15}
+.lp .lp-k-jml small{display:block;font-weight:400;font-size:7.5pt}
+.lp .lp-k-status{margin:1.5mm 0 0 8.5mm;font-size:10pt}
+.lp .lp-k-kej{margin:1.8mm 0 0 8.5mm;padding-top:1.8mm;border-top:1px dashed #666;font-size:10.5pt}
+@media screen and (max-width:700px){
+  .cetak-hal.lp{padding:5mm 3.5mm;min-height:0}
+  .lp .kop{gap:2mm;padding-bottom:2mm;margin-bottom:3mm}
+  .lp .kop-logo{width:13mm;height:13mm}
+  .lp .kop-1{font-size:8pt}.lp .kop-2{font-size:9pt}.lp .kop-3{font-size:10.5pt}.lp .kop-4{font-size:7pt}
+  .lp .cetak-judul{font-size:12pt}
+  .lp .cetak-bio{font-size:10.5pt}
+  .lp .cetak-bio td:first-child{width:31mm}
+  .lp .lp-rekap-bungkus .cetak-tabel{font-size:8.5pt}
+  .lp .lp-rekap-bungkus .cetak-tabel th,.lp .lp-rekap-bungkus .cetak-tabel td{padding:1mm 1.2mm!important}
+  .lp .lp-tabel-wrap{display:none}
+  .lp .lp-kartu-wrap{display:block}
+  .lp .cetak-ttd,.lp .cetak-ttd-baris{justify-content:center}
+}`;
   document.head.appendChild(st);
 })();
 
@@ -127,6 +162,8 @@ const CT_CSS_CETAK = `
   .cetak-kertas{width:auto!important;margin:0!important;gap:0!important;display:block!important}
   .cetak-hal{box-shadow:none!important;padding:0!important;min-height:0!important;break-after:page;page-break-after:always}
   .cetak-hal:last-child{break-after:auto;page-break-after:auto}
+  .lp .lp-tabel-wrap{display:block!important}
+  .lp .lp-kartu-wrap{display:none!important}
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 }`;
 
@@ -550,7 +587,7 @@ function ctHalamanKelas(P, sc, idx) {
         <td><div>${esc(r.s.nama)}</div><div class="nisn">NISN: ${esc(r.s.username)}</div></td>
         <td class="c">${esc(sc.kelasNama)}</td>
         <td class="c"><b>${esc(ctNilaiTeks(r.st, r.h))}</b></td>
-        <td>${esc(ctKet(r.st, r.h, u))}</td></tr>`).join("")
+        <td class="c">${esc(ctKet(r.st, r.h, u))}</td></tr>`).join("")
         : '<tr><td colspan="5" class="c">Tidak ada siswa pada kelas ini.</td></tr>'}</tbody>
     </table>
     <div class="cetak-ringkas">${ringkas.join(" &nbsp;|&nbsp; ")}</div>
@@ -598,7 +635,7 @@ function ctHalamanSiswa(P) {
         <td><div>${esc(ctNamaMapel(r.u.mapel_id))}</div>${(() => { const k = [r.u.jenis_ujian, r.u.judul && norm(r.u.judul) !== norm(ctNamaMapel(r.u.mapel_id)) ? r.u.judul : ""].filter(Boolean); return k.length ? `<div class="nisn">${esc(k.join(" · "))}</div>` : ""; })()}</td>
         <td class="c">${esc(ctTglUjian(r.u))}</td>
         <td class="c"><b>${esc(ctNilaiTeks(r.st, r.h))}</b></td>
-        <td>${esc(ctKet(r.st, r.h, r.u))}</td></tr>`).join("")}</tbody>
+        <td class="c">${esc(ctKet(r.st, r.h, r.u))}</td></tr>`).join("")}</tbody>
     </table>
     ${ctLegenda(rowsSemua, u0)}
     <div class="cetak-ttd-grid">
@@ -642,7 +679,7 @@ function ctPratinjau(P) {
   document.body.style.overflow = "hidden";
 
   const gambar = () => {
-    $("#ct-isi").innerHTML = P.mode === "siswa" ? ctHalamanSiswa(P) : P.sections.map((sc, i) => ctHalamanKelas(P, sc, i)).join("");
+    $("#ct-isi").innerHTML = P.render ? P.render(P) : (P.mode === "siswa" ? ctHalamanSiswa(P) : P.sections.map((sc, i) => ctHalamanKelas(P, sc, i)).join(""));
   };
   gambar();
 

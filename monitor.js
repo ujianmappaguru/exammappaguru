@@ -94,6 +94,7 @@ async function rMonitor() {
           <option value="60">Segarkan tiap 60 dtk</option>
           <option value="0">Manual</option>
         </select>
+        <button class="btn" id="mn-cetak" type="button">🖨️ Cetak laporan</button>
         <button class="btn btn-primary" id="mn-segar" type="button">Segarkan</button>
       </div>
     </div>
@@ -105,6 +106,7 @@ async function rMonitor() {
   $("#mn-cari").oninput = (e) => { MN.cari = e.target.value; mnGambar(); };
   $("#mn-jeda").onchange = (e) => { MN.jeda = Number(e.target.value); mnJadwal(); };
   $("#mn-segar").onclick = () => mnMuat();
+  $("#mn-cetak").onclick = () => lpDialog();
   $("#mn-status").value = MN.status;
   $("#mn-cari").value = MN.cari;
   $("#mn-jeda").value = String(MN.jeda);
@@ -478,4 +480,328 @@ async function rPengaturanAntiCurang(el) {
       tombol.disabled = false;
     }
   };
+}
+
+
+// =====================================================================
+//  LAPORAN PELANGGARAN (cetak A4 / tampilan HP) - dibuka dari tombol
+//  "Cetak laporan" di Monitor Ujian. Memakai kop, pratinjau, dan tanda
+//  tangan dari cetak.js. Butuh 27_laporan_pelanggaran.sql.
+//
+//  Tiga mode: per kelas, per mapel, per siswa. Semua siswa tampil
+//  (urut abjad nama), NISN di bawah nama, lengkap dengan jam kejadian.
+// =====================================================================
+const LP_HITUNG = ["pindah_aplikasi", "kehilangan_fokus", "keluar_layar_penuh", "layar_terbagi", "keluar_area", "lompat_lokasi", "gps_mati"];
+
+// epoch detik -> teks ISO yang sudah digeser ke WITA ("2026-11-21T09:14:05.000Z")
+const lpWita = (t) => new Date(Number(t) * 1000 + OFFSET_WITA_MS).toISOString();
+function lpHariKey(x) {
+  const ms = new Date(x).getTime();
+  return Number.isNaN(ms) ? "" : new Date(ms + OFFSET_WITA_MS).toISOString().slice(0, 10);
+}
+const lpGalat = (e) => (e && (e.code === "PGRST202" || /could not find the function/i.test(e.message || ""))
+  ? "Fungsi laporan belum terpasang. Jalankan 27_laporan_pelanggaran.sql di Supabase."
+  : (e && e.message) || String(e));
+const lpBelumTeks = (u) => (ctUjianBerakhir(u) ? "Tidak ikut ujian" : "Belum mengerjakan");
+
+// Satu baris laporan dari satu baris data RPC. c = { u, maks, aktifKumpul }
+function lpBaris(b, c) {
+  const jumlah = Number(b.pelanggaran) || 0;
+  const log = Array.isArray(b.log) ? b.log : [];
+  const kej = log.filter((e) => e && Number(e.t) > 0 && (LP_HITUNG.includes(e.j) || e.j === "reset"));
+  let kode = "belum", status = lpBelumTeks(c.u);
+  if (b.status === "mengerjakan") { kode = "kerja"; status = "Belum mengumpulkan"; }
+  else if (b.status === "selesai") {
+    if (c.aktifKumpul && c.maks > 0 && jumlah >= c.maks) { kode = "batas"; status = "Dikumpulkan otomatis"; }
+    else { kode = "selesai"; status = "Selesai"; }
+  }
+  return { jumlah, kej, potong: log.length >= 40, kode, status, refKey: lpHariKey(b.mulai_pada || c.u.waktu_mulai) };
+}
+
+// Daftar jam + jenis kejadian (kolom terakhir tabel / bagian bawah kartu HP)
+function lpKejHtml(r) {
+  if (!r.kej.length) return '<span>&ndash;</span>';
+  const baris = r.kej.map((e) => {
+    const w = lpWita(e.t);
+    const jam = (w.slice(0, 10) === r.refKey ? "" : `${w.slice(8, 10)}/${w.slice(5, 7)} `) + w.slice(11, 16);
+    if (e.j === "reset") return `<div class="lp-kej lp-reset"><span class="lp-jam">${jam}</span><span>&#8634; Pelanggaran direset pengawas</span></div>`;
+    const teks = (MN_LABEL[e.j] || [e.j])[0];
+    let ekstra = "";
+    if (e.d != null) {
+      if (e.j === "pindah_aplikasi") ekstra = ` (${e.d} dtk)`;
+      else if (e.j === "keluar_area" || e.j === "lompat_lokasi") ekstra = ` (${e.d} m)`;
+    }
+    return `<div class="lp-kej"><span class="lp-jam">${jam}</span><span>${esc(teks + ekstra)}</span></div>`;
+  }).join("");
+  return baris + (r.potong ? '<div class="lp-catatan">Riwayat dibatasi 40 kejadian terakhir.</div>' : "");
+}
+
+// Tabel (kertas) + kartu (layar HP). CSS memilih salah satu.
+function lpTabel(rows, judulKol) {
+  const tabel = `<div class="lp-tabel-wrap"><table class="cetak-tabel lp-tabel">
+    <thead><tr><th style="width:6%">No.</th><th style="width:31%">${esc(judulKol)}</th><th style="width:15%">Status</th><th style="width:9%">Jumlah</th><th>Waktu &amp; jenis pelanggaran</th></tr></thead>
+    <tbody>${rows.length ? rows.map((r, i) => `<tr>
+      <td class="c">${i + 1}</td><td>${r.utama}</td><td class="c">${esc(r.status)}</td>
+      <td class="c">${r.jumlah ? `<b>${r.jumlah}</b>` : "0"}</td><td class="c">${lpKejHtml(r)}</td></tr>`).join("")
+      : '<tr><td colspan="5" class="c">Tidak ada data.</td></tr>'}</tbody></table></div>`;
+  const kartu = `<div class="lp-kartu-wrap">${rows.map((r, i) => `<div class="lp-kartu">
+      <div class="lp-k-atas"><div class="lp-k-no">${i + 1}.</div><div class="lp-k-nama">${r.utama}</div>
+        <div class="lp-k-jml">${r.jumlah}<small>pelanggaran</small></div></div>
+      <div class="lp-k-status">${esc(r.status)}</div>
+      ${r.kej.length ? `<div class="lp-k-kej">${lpKejHtml(r)}</div>` : ""}</div>`).join("")}</div>`;
+  return tabel + kartu;
+}
+
+function lpRingkas(rows, u) {
+  const n = rows.length;
+  const absen = rows.filter((r) => r.kode === "belum").length;
+  const melanggar = rows.filter((r) => r.jumlah > 0).length;
+  const batas = rows.filter((r) => r.kode === "batas").length;
+  const total = rows.reduce((a, r) => a + r.jumlah, 0);
+  const item = [`Jumlah siswa: <b>${n}</b>`, `Melanggar: <b>${melanggar}</b>`, `Tanpa pelanggaran: <b>${n - absen - melanggar}</b>`, `Total pelanggaran: <b>${total}</b>`];
+  if (absen) item.push(`${esc(lpBelumTeks(u))}: <b>${absen}</b>`);
+  if (batas) item.push(`Batas pelanggaran tercapai: <b>${batas}</b>`);
+  return item.join(" &nbsp;|&nbsp; ");
+}
+
+function lpBlokTtd(P, mapelNama, c, pil, idx) {
+  const pilih = pil.length > 1
+    ? `<div class="no-print"><select class="pilih" data-ttd="${idx}">${pil.map((g, i) => `<option value="${i}" ${i === pil.sel ? "selected" : ""}>${esc(g.nama)}</option>`).join("")}</select></div>` : "";
+  return `<div class="ttd-blok">
+      <div>${ctTempatTgl(P)}</div>
+      <div>Guru ${esc(mapelNama)},</div>
+      <div class="ttd-ruang"></div>
+      <div class="ttd-nama">${ctNamaTtd(c)}</div>
+      <div>NIP. ${esc(ctNip(c))}</div>${pilih}</div>`;
+}
+
+function lpHalamanKelas(P, sc, idx) {
+  const u = P.u;
+  const c = sc.calon[sc.pil];
+  sc.calon.sel = sc.pil;
+  return `<section class="cetak-hal lp">
+    ${kopHtml(P.pg, P.urlKiri, P.urlKanan)}
+    <h2 class="cetak-judul">LAPORAN PELANGGARAN UJIAN</h2>
+    ${ctSub(u.jenis_ujian, sc.tahun)}
+    <table class="cetak-bio">
+      <tr><td>Mata Pelajaran</td><td>:</td><td><b>${esc(P.mapelNama)}</b></td></tr>
+      ${u.judul && norm(u.judul) !== norm(P.mapelNama) ? `<tr><td>Ujian</td><td>:</td><td>${esc(u.judul)}</td></tr>` : ""}
+      <tr><td>Kelas</td><td>:</td><td><b>${esc(sc.kelasNama)}</b></td></tr>
+      ${sc.tahun ? `<tr><td>Tahun Ajaran</td><td>:</td><td>${esc(sc.tahun)}</td></tr>` : ""}
+      <tr><td>Tanggal Ujian</td><td>:</td><td>${esc(ctTglUjian(u))}</td></tr>
+      ${P.maks > 0 ? `<tr><td>Batas Pelanggaran</td><td>:</td><td>${P.maks} kali${P.aktifKumpul ? " (ujian dikumpulkan otomatis)" : ""}</td></tr>` : ""}
+    </table>
+    ${lpTabel(sc.rows, "Nama Siswa / NISN")}
+    <div class="cetak-ringkas">${lpRingkas(sc.rows, u)}</div>
+    <div class="cetak-ttd">${lpBlokTtd(P, P.mapelNama, c, sc.calon, idx)}</div>
+  </section>`;
+}
+
+// Halaman rekap per kelas (hanya mode per mapel dengan lebih dari satu kelas)
+function lpHalamanRekap(P) {
+  const u = P.u;
+  const th = P.sections[0] ? P.sections[0].tahun : "";
+  const baris = P.sections.map((sc) => {
+    const n = sc.rows.length, absen = sc.rows.filter((r) => r.kode === "belum").length;
+    const mel = sc.rows.filter((r) => r.jumlah > 0).length;
+    const tot = sc.rows.reduce((a, r) => a + r.jumlah, 0);
+    const bat = sc.rows.filter((r) => r.kode === "batas").length;
+    return { sc, n, mel, tanpa: n - absen - mel, absen, tot, bat };
+  });
+  const jml = (k) => baris.reduce((a, b) => a + b[k], 0);
+  return `<section class="cetak-hal lp">
+    ${kopHtml(P.pg, P.urlKiri, P.urlKanan)}
+    <h2 class="cetak-judul">REKAP PELANGGARAN UJIAN</h2>
+    ${ctSub(u.jenis_ujian, th)}
+    <table class="cetak-bio">
+      <tr><td>Mata Pelajaran</td><td>:</td><td><b>${esc(P.mapelNama)}</b></td></tr>
+      ${u.judul && norm(u.judul) !== norm(P.mapelNama) ? `<tr><td>Ujian</td><td>:</td><td>${esc(u.judul)}</td></tr>` : ""}
+      ${th ? `<tr><td>Tahun Ajaran</td><td>:</td><td>${esc(th)}</td></tr>` : ""}
+      <tr><td>Tanggal Ujian</td><td>:</td><td>${esc(ctTglUjian(u))}</td></tr>
+      ${P.maks > 0 ? `<tr><td>Batas Pelanggaran</td><td>:</td><td>${P.maks} kali${P.aktifKumpul ? " (ujian dikumpulkan otomatis)" : ""}</td></tr>` : ""}
+    </table>
+    <div class="lp-rekap-bungkus"><table class="cetak-tabel">
+      <thead><tr><th>Kelas</th><th>Siswa</th><th>Melanggar</th><th>Tanpa pelanggaran</th><th>Tidak ikut</th><th>Total</th></tr></thead>
+      <tbody>${baris.map((b) => `<tr><td class="c"><b>${esc(b.sc.kelasNama)}</b></td><td class="c">${b.n}</td><td class="c">${b.mel}</td><td class="c">${b.tanpa}</td><td class="c">${b.absen}</td><td class="c">${b.tot}</td></tr>`).join("")}
+      <tr><td class="c"><b>Jumlah</b></td><td class="c"><b>${jml("n")}</b></td><td class="c"><b>${jml("mel")}</b></td><td class="c"><b>${jml("tanpa")}</b></td><td class="c"><b>${jml("absen")}</b></td><td class="c"><b>${jml("tot")}</b></td></tr></tbody>
+    </table></div>
+    <div class="cetak-ringkas">Rincian siswa dan waktu pelanggaran tiap kelas ada pada halaman berikutnya.</div>
+  </section>`;
+}
+
+function lpHalamanSiswa(P) {
+  const s = P.siswa;
+  const total = P.rows.reduce((a, r) => a + r.jumlah, 0);
+  const mel = P.rows.filter((r) => r.jumlah > 0).length;
+  const blok = P.ttd.map((t, i) => { t.calon.sel = t.pil; return lpBlokTtd(P, ctNamaMapel(t.mapelId), t.calon[t.pil], t.calon, i); }).join("");
+  return `<section class="cetak-hal lp">
+    ${kopHtml(P.pg, P.urlKiri, P.urlKanan)}
+    <h2 class="cetak-judul">LAPORAN PELANGGARAN UJIAN SISWA</h2>
+    ${ctSub("", P.tahun)}
+    <table class="cetak-bio">
+      <tr><td>Nama Siswa</td><td>:</td><td><b>${esc(s.nama)}</b></td></tr>
+      <tr><td>NISN</td><td>:</td><td>${esc(s.username)}</td></tr>
+      <tr><td>Kelas</td><td>:</td><td><b>${esc(P.kelasNama)}</b></td></tr>
+      ${P.tahun ? `<tr><td>Tahun Ajaran</td><td>:</td><td>${esc(P.tahun)}</td></tr>` : ""}
+      ${P.maks > 0 ? `<tr><td>Batas Pelanggaran</td><td>:</td><td>${P.maks} kali per ujian</td></tr>` : ""}
+    </table>
+    ${lpTabel(P.rows, "Mata Pelajaran / Tanggal")}
+    <div class="cetak-ringkas">Ujian diikuti: <b>${P.rows.length}</b> &nbsp;|&nbsp; Ujian dengan pelanggaran: <b>${mel}</b> &nbsp;|&nbsp; Total pelanggaran: <b>${total}</b></div>
+    ${blok ? `<div class="cetak-ttd-grid"><div class="cetak-ttd-baris">${blok}</div></div>` : ""}
+  </section>`;
+}
+
+function lpRender(P) {
+  if (P.mode === "siswa") return lpHalamanSiswa(P);
+  const hal = P.sections.map((sc, i) => lpHalamanKelas(P, sc, i)).join("");
+  return (P.mode === "mapel" && P.sections.length > 1 ? lpHalamanRekap(P) : "") + hal;
+}
+
+// ---------- menyusun data ----------
+async function lpSusun(o) {
+  const [pg, G] = await Promise.all([ctPengaturan(), ctMuatGuru()]);
+  const P = {
+    mode: o.mode, pg, G, render: lpRender,
+    urlKiri: pgUrlLogo(pg.logo_kiri), urlKanan: pgUrlLogo(pg.logo_kanan),
+    tgl: witaKeInput(null).slice(0, 10), sections: [],
+  };
+
+  if (o.mode === "siswa") {
+    const s = S.siswa.find((x) => x.id === o.siswaId);
+    if (!s) throw new Error("Siswa tidak ditemukan.");
+    const { data, error } = await sb.rpc("laporan_pelanggaran_siswa", { p_siswa_id: s.id });
+    if (error) throw new Error(lpGalat(error));
+    const ac = data.anticurang || {};
+    const c0 = { maks: Number(ac.maks) || 0, aktifKumpul: ac.aksi === "kumpul" };
+    const rows = (data.baris || []).map((b) => {
+      const r = lpBaris(b, { ...c0, u: b });
+      const mapel = namaMapel(b.mapel_id);
+      const sub = [b.jenis_ujian, b.judul && norm(b.judul) !== norm(mapel) ? b.judul : ""].filter(Boolean).join(" · ");
+      r.mapelId = b.mapel_id;
+      r.urutMapel = mapel;
+      r.mulai = new Date(b.waktu_mulai).getTime();
+      r.utama = `<div><b>${esc(mapel)}</b></div>${sub ? `<div class="nisn">${esc(sub)}</div>` : ""}<div class="nisn">${esc(ctTgl(b.mulai_pada || b.waktu_mulai))}</div>`;
+      return r;
+    }).sort((a, b) => urut(a.urutMapel, b.urutMapel) || a.mulai - b.mulai);
+    if (!rows.length) throw new Error("Siswa ini belum mengikuti ujian apa pun.");
+    const kls = S.kelas.find((k) => k.id === s.kelas_id) || {};
+    P.siswa = s; P.kelasNama = kls.nama || "-"; P.tahun = kls.tahun_ajaran || tahunAjaranAktif();
+    P.maks = c0.maks; P.rows = rows;
+    P.ttd = [...new Set(rows.filter((r) => r.jumlah > 0).map((r) => r.mapelId))]
+      .map((mid) => ({ mapelId: mid, calon: ctCalonGuru(G, mid, s.kelas_id), pil: 0 }));
+    P.ringkas = `${s.nama} · ${P.kelasNama} · ${rows.length} ujian`;
+    return P;
+  }
+
+  const { data, error } = await sb.rpc("laporan_pelanggaran_ujian", { p_ujian_id: o.ujianId });
+  if (error) throw new Error(lpGalat(error));
+  const u = data.ujian;
+  const ac = data.anticurang || {};
+  P.u = u; P.mapelNama = namaMapel(u.mapel_id);
+  P.maks = Number(ac.maks) || 0; P.aktifKumpul = ac.aksi === "kumpul";
+
+  const kelasOk = new Set(S.kelas.map((k) => k.id));
+  const peta = new Map();
+  (data.baris || []).forEach((b) => {
+    if (!kelasOk.has(b.kelas_id)) return;
+    if (o.mode === "kelas" && b.kelas_id !== o.kelasId) return;
+    if (!peta.has(b.kelas_id)) peta.set(b.kelas_id, []);
+    peta.get(b.kelas_id).push(b);
+  });
+  if (!peta.size) throw new Error("Tidak ada siswa yang bisa dilaporkan untuk pilihan ini.");
+
+  const kelasIds = [...peta.keys()].sort((a, b) => urut(namaKelas(a), namaKelas(b)));
+  P.sections = kelasIds.map((kid) => {
+    const kls = S.kelas.find((k) => k.id === kid) || {};
+    const rows = peta.get(kid).slice().sort((a, b) => urut(a.nama, b.nama)).map((b) => {
+      const r = lpBaris(b, { u, maks: P.maks, aktifKumpul: P.aktifKumpul });
+      r.utama = `<div><b>${esc(b.nama)}</b></div><div class="nisn">NISN: ${esc(b.nisn)}</div>`;
+      return r;
+    });
+    return { kelasId: kid, kelasNama: kls.nama || "-", tahun: kls.tahun_ajaran || tahunAjaranAktif(), rows, calon: ctCalonGuru(G, u.mapel_id, kid), pil: 0 };
+  });
+  const total = P.sections.reduce((n, sc) => n + sc.rows.length, 0);
+  P.ringkas = `${P.mapelNama} · ${P.sections.map((sc) => sc.kelasNama).join(", ")} · ${total} siswa`;
+  return P;
+}
+
+// ---------- dialog pilihan ----------
+async function lpDialog() {
+  try { await Promise.all([muatKelas(), muatMapel(), muatSiswa()]); }
+  catch (e) { return toast("Gagal memuat data: " + (e.message || e), "error"); }
+  if (!MN.ujian.length) return toast("Belum ada ujian.", "error");
+
+  const kelasOk = new Set(S.kelas.map((k) => k.id));
+  const cache = new Map();
+  const kelasUjian = async (ujianId) => {
+    if (!cache.has(ujianId)) {
+      const { data, error } = await sb.from("ujian_kelas").select("kelas_id").eq("ujian_id", ujianId);
+      if (error) throw error;
+      cache.set(ujianId, (data || []).map((x) => x.kelas_id).filter((id) => kelasOk.has(id))
+        .sort((a, b) => urut(namaKelas(a), namaKelas(b))));
+    }
+    return cache.get(ujianId);
+  };
+  const awalKelas = (S.kelas.find((k) => k.nama === MN.kelas) || {}).id || "";
+  const radio = (v, teks, ket, cek) => `<label style="display:flex;gap:.5rem;align-items:center;margin:.3rem 0"><input type="radio" name="lp-mode" value="${v}" ${cek ? "checked" : ""}> ${teks} <small class="ket">${ket}</small></label>`;
+
+  const html = `
+    <div class="f"><div class="sl-judul">Jenis laporan</div>
+      ${radio("kelas", "Per kelas", "(satu mapel, satu kelas)", true)}
+      ${radio("mapel", "Per mapel", "(satu mapel, semua kelas pesertanya)", false)}
+      ${radio("siswa", "Per siswa", "(semua mapel yang ia ikuti)", false)}
+    </div>
+    <label class="f" id="lp-b-ujian">Pilih ujian / mata pelajaran
+      <select class="pilih" id="lp-ujian">${MN.ujian.map((u) => `<option value="${u.id}" ${u.id === MN.ujianId ? "selected" : ""}>${u.jenis_ujian ? esc(u.jenis_ujian) + " · " : ""}${esc(namaMapel(u.mapel_id))} · ${esc(u.judul)} · ${esc(mnWaktu(u.waktu_mulai))}</option>`).join("")}</select></label>
+    <label class="f" id="lp-b-kelas">Kelas<select class="pilih" id="lp-kelas"></select></label>
+    <p class="ket" id="lp-info-mapel" hidden></p>
+    <label class="f" id="lp-b-siswa" hidden>Siswa<select class="pilih" id="lp-siswa"></select></label>
+    <p class="ket">Semua siswa ditampilkan, urut abjad nama, lengkap dengan jam kejadian pelanggaran. Pratinjau bisa dicetak atau disimpan sebagai PDF.</p>`;
+
+  const m = tampilModal("Cetak laporan pelanggaran", html, {
+    lebar: "sedang",
+    aksi: [{ label: "Batal" }, {
+      label: "Tampilkan pratinjau", kelas: "btn-primary",
+      onClick: async () => {
+        const md = mode();
+        const o = { mode: md, ujianId: q("#lp-ujian").value, kelasId: q("#lp-kelas").value, siswaId: q("#lp-siswa").value };
+        if (md === "kelas" && !o.kelasId) throw new Error("Pilih kelas dulu.");
+        if (md === "siswa" && !o.siswaId) throw new Error("Pilih siswa dulu.");
+        ctPratinjau(await lpSusun(o));
+      },
+    }],
+  });
+  const q = (s) => m.body.querySelector(s);
+  const mode = () => m.body.querySelector('input[name="lp-mode"]:checked').value;
+
+  const isiSiswa = () => {
+    const daftar = S.siswa.filter((s) => s.kelas_id === q("#lp-kelas").value).sort((a, b) => urut(a.nama, b.nama));
+    q("#lp-siswa").innerHTML = daftar.length ? daftar.map((s) => `<option value="${s.id}">${esc(s.nama)} (${esc(s.username)})</option>`).join("")
+      : '<option value="">(tidak ada siswa)</option>';
+  };
+  const isiKelas = async () => {
+    const md = mode(), sel = q("#lp-kelas");
+    let ids = [];
+    try {
+      ids = md === "siswa" ? S.kelas.map((k) => k.id).sort((a, b) => urut(namaKelas(a), namaKelas(b))) : await kelasUjian(q("#lp-ujian").value);
+    } catch (_) { ids = []; }
+    const pilih = sel.value || awalKelas;
+    sel.innerHTML = ids.length ? ids.map((id) => `<option value="${id}" ${id === pilih ? "selected" : ""}>${esc(namaKelas(id))}</option>`).join("")
+      : '<option value="">(tidak ada kelas)</option>';
+    if (md === "mapel") q("#lp-info-mapel").textContent = ids.length ? "Kelas yang dicetak: " + ids.map(namaKelas).join(", ") : "Ujian ini belum ditujukan ke kelas yang bisa Anda lihat.";
+    if (md === "siswa") isiSiswa();
+  };
+  const atur = () => {
+    const md = mode();
+    q("#lp-b-ujian").hidden = md === "siswa";
+    q("#lp-b-kelas").hidden = md === "mapel";
+    q("#lp-info-mapel").hidden = md !== "mapel";
+    q("#lp-b-siswa").hidden = md !== "siswa";
+    return isiKelas();
+  };
+  m.body.addEventListener("change", (e) => {
+    if (e.target.name === "lp-mode" || e.target.id === "lp-ujian") atur();
+    else if (e.target.id === "lp-kelas" && mode() === "siswa") isiSiswa();
+  });
+  atur();
 }
