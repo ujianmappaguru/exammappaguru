@@ -1367,6 +1367,7 @@ function renderSoalAktif() {
 
   box.querySelectorAll("[data-pilih-pg]").forEach((btn) => {
     btn.onclick = () => {
+      if (!CBT.aktif || CBT.submitting) return;
       CBT.jawaban[s.id] = Number(btn.dataset.pilihPg);
       renderSoalAktif();
       simpanProgresKeServer(false);
@@ -1490,6 +1491,13 @@ async function kumpulkanUjianSekarang(otomatis = false) {
     CBT.aktif = false;
     AC.berhenti(true);
     document.body.classList.remove("mode-cbt");
+    // Layar soal dibuang: tanpa ini soal tetap ada di belakang popup dan masih bisa
+    // diklik bila popup tertutup (klik di luar popup / tombol Esc).
+    konten().innerHTML = `<div class="kartu" style="text-align:center;padding:2rem 1rem">
+      <h2>Ujian Telah Dikumpulkan</h2>
+      <p class="ket">Jawaban Anda sudah tercatat dan tidak dapat diubah lagi.</p>
+      <p><a class="btn btn-primary" href="#hasil">Lihat Riwayat Hasil</a></p>
+    </div>`;
     sessionStorage.removeItem(`token_ujian_${CBT.ujian.id}`);
     hapusCacheUjian(CBT.ujian.id); // paket soal + jawaban lokal dihapus setelah terkirim
 
@@ -1525,6 +1533,7 @@ async function kumpulkanUjianSekarang(otomatis = false) {
           onClick: () => { location.hash = "hasil"; },
         },
       ],
+      kunci: true,
     });
   } catch (err) {
     modalProses.tutup();
