@@ -294,6 +294,14 @@ ol.langkah li.selesai em{color:var(--ok)}
   .kartu dt::after{content:" :"}
   .kartu dd{margin:0;font-weight:700;overflow-wrap:anywhere}
   .kartu dd.kode{font-family:"Courier New",monospace;font-size:11pt;word-break:break-all}
+  .kartu .k-isi{display:flex;align-items:flex-start;gap:2mm}
+  .kartu .k-isi dl{flex:1;min-width:0}
+  .kartu .k-qr{flex:none;width:17mm;text-align:center;line-height:1}
+  .kartu .k-qr svg{display:block;width:17mm;height:17mm}
+  .kartu .k-qr small{display:block;font-size:4.5pt;margin-top:.4mm;color:#333}
+  .per6 .kartu .k-qr{width:25mm}
+  .per6 .kartu .k-qr svg{width:25mm;height:25mm}
+  .per6 .kartu .k-qr small{font-size:6pt}
   .kartu .k-kaki{margin-top:auto;padding-top:1mm;font-size:6.5pt;line-height:1.25;color:#333;word-break:break-all}
 
   /* 6 kartu per kertas: lebih lega, huruf lebih besar */

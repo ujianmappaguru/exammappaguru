@@ -192,6 +192,17 @@ async function kartuDaftarJenisUjian() {
   } catch (_) { return []; }
 }
 
+// QR code (SVG) dari teks. Kosong bila library belum termuat.
+function qrSvg(teks) {
+  try {
+    if (typeof qrcode !== "function") return "";
+    const q = qrcode(0, "M"); q.addData(String(teks)); q.make();
+    const n = q.getModuleCount(); let d = "";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c},${r}h1v1h-1z`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 ${n + 4} ${n + 4}" shape-rendering="crispEdges"><rect x="-2" y="-2" width="${n + 4}" height="${n + 4}" fill="#fff"/><path d="${d}"/></svg>`;
+  } catch (_) { return ""; }
+}
+
 // Satu kartu. pg = data kop (boleh null), logo = [urlKiri, urlKanan]
 function kartuHtml(k, O, pg, logo, alamat, periode) {
   const baris = (kls, t) => (String(t || "").trim() ? `<div class="${kls}">${esc(t)}</div>` : "");
@@ -207,12 +218,15 @@ function kartuHtml(k, O, pg, logo, alamat, periode) {
     ${kepala}
     <div class="k-judul">${esc(O.judul)}</div>
     <div class="k-ket">${esc(ket)}</div>
-    <dl>
-      <dt>Nama</dt><dd>${esc(k.nama)}</dd>
-      <dt>${k.peran === "siswa" ? "Kelas" : "Peran"}</dt><dd>${esc(k.kelas)}</dd>
-      <dt>Username</dt><dd class="kode">${esc(k.username)}</dd>
-      <dt>Password</dt><dd class="kode">${esc(k.password)}</dd>
-    </dl>
+    <div class="k-isi">
+      <dl>
+        <dt>Nama</dt><dd>${esc(k.nama)}</dd>
+        <dt>${k.peran === "siswa" ? "Kelas" : "Peran"}</dt><dd>${esc(k.kelas)}</dd>
+        <dt>Username</dt><dd class="kode">${esc(k.username)}</dd>
+        <dt>Password</dt><dd class="kode">${esc(k.password)}</dd>
+      </dl>
+      ${qrSvg(alamat) ? `<div class="k-qr">${qrSvg(alamat)}<small>Scan untuk buka ujian</small></div>` : ""}
+    </div>
     <div class="k-kaki">Alamat: ${esc(alamat)}<br>Jaga kerahasiaan password. Jangan dibagikan ke siapa pun.</div>
   </div>`;
 }
@@ -1629,18 +1643,21 @@ async function rBerandaGuru() {
 //  Router dan awal aplikasi
 // ---------------------------------------------------------------------
 const MENU_GURU = [
-  { key: "beranda", judul: "Beranda", sub: "Ringkasan tugas mengajar Anda", ikon: "🏠", render: rBerandaGuru },
+  { key: "beranda", judul: "Beranda", sub: "Ringkasan tugas mengajar Anda", ikon: "🏠", render: () => rBerandaGuruBaru() },
   { key: "soal", judul: "Bank Soal", sub: "Isi & kelola soal ujian", ikon: "📝", render: () => rSoal() },
   { key: "hasil", judul: "Hasil Ujian", sub: "Progres ujian, hasil & penilaian esai", ikon: "📊", render: () => rHasil() },
   { key: "monitor", judul: "Monitor Ujian", sub: "Pantau siswa selama ujian berlangsung", ikon: "📡", render: () => rMonitor() },
+  { key: "tidakikut", judul: "Siswa Tidak Ikut Ujian", sub: "Daftar siswa yang tidak mengikuti ujian di mapel & kelas Anda", ikon: "🚫", render: () => rTidakIkut() },
   { key: "panduan", judul: "Panduan & Tata Tertib", sub: "Cara memakai aplikasi, tata cara & tata tertib ujian", ikon: "📖", render: () => rPanduan() },
 ];
 const MENU_UTAMA = [
-  { key: "beranda", judul: "Beranda", sub: "Ringkasan & kendali utama", ikon: "🏠", render: rBeranda },
+  { key: "beranda", judul: "Beranda", sub: "Ringkasan & kendali utama", ikon: "🏠", render: () => rBerandaBaru() },
   { key: "data", judul: "Data", sub: "Kelas, mata pelajaran, guru & siswa", ikon: "🗂️", render: rData },
   { key: "soal", judul: "Bank Soal", sub: "Kelola bank & butir soal ujian", ikon: "📝", render: () => rSoal() },
   { key: "hasil", judul: "Hasil Ujian", sub: "Rekap nilai & status pengerjaan siswa", ikon: "📊", render: () => rHasil() },
   { key: "monitor", judul: "Monitor Ujian", sub: "Pantau siswa selama ujian berlangsung", ikon: "📡", render: () => rMonitor() },
+  { key: "cetakujian", judul: "Cetak Hadir & BA", sub: "Daftar hadir & berita acara ujian", ikon: "🖨️", render: () => rCetakUjian() },
+  { key: "tidakikut", judul: "Siswa Tidak Ikut Ujian", sub: "Daftar siswa yang tidak mengikuti ujian, per hari atau rentang tanggal", ikon: "🚫", render: () => rTidakIkut() },
   { key: "admin", judul: "Admin", sub: "Manajemen akun administrator", ikon: "🛡️", render: rAdmin },
   { key: "panduan", judul: "Panduan & Tata Tertib", sub: "Cara memakai aplikasi, tata cara & tata tertib ujian", ikon: "📖", render: () => rPanduan() },
 ];

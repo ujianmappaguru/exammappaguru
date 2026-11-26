@@ -695,3 +695,204 @@ function ctPratinjau(P) {
   CT.onKey = (e) => { if (e.key === "Escape" && !document.querySelector(".modal-bg")) ctTutup(); };
   document.addEventListener("keydown", CT.onKey);
 }
+
+// =====================================================================
+//  MENU "CETAK HADIR & BA"  (admin & guru)
+//  Tidak bergantung pada ujian / bank soal. Siswa diambil dari data kelas.
+//  Isian umum (mapel, jenis ujian, tanggal, jam, ruang) dipakai oleh
+//  daftar hadir DAN berita acara; yang dikosongkan dicetak titik-titik.
+// =====================================================================
+(function () {
+  const st = document.createElement("style");
+  st.textContent = `
+.cetak-hal .titik{display:inline-block;border-bottom:1px dotted #000;min-width:28mm;height:1em;vertical-align:baseline}
+.cetak-hal .titik.l{min-width:50mm}.cetak-hal .titik.s{min-width:14mm}
+.cetak-hal .baris-titik{border-bottom:1px dotted #000;height:7.5mm}
+.cetak-hal .cetak-tabel.hadir{table-layout:fixed;font-size:10.5pt}
+.cetak-hal .cetak-tabel.hadir th{height:8mm;font-size:10.5pt!important}
+.cetak-hal .cetak-tabel.hadir td{height:10mm;padding:.8mm 2mm!important;vertical-align:middle;font-size:10.5pt!important;overflow-wrap:anywhere}
+.cetak-hal .cetak-tabel.hadir td.tt{text-align:left!important}
+.cetak-hal .cetak-tabel.hadir td.nm div{line-height:1.25!important}
+.cetak-hal .cetak-tabel.hadir .nisn{font-size:10.5pt!important;color:#000!important}
+.cetak-hal .cetak-tabel.hadir.ba td{height:8mm}
+.cetak-hal .cetak-tabel.hadir thead{display:table-header-group}
+.cetak-hal .cetak-tabel.hadir tr{break-inside:avoid}
+.cetak-hal .ba-teks{font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.9;text-align:justify}
+.cetak-hal .ba-no{display:grid;grid-template-columns:8mm 1fr;line-height:1.9;font-family:"Times New Roman",Times,serif;font-size:12pt}
+.cetak-hal .ttd-2{margin-top:8mm;display:flex;justify-content:space-between;break-inside:avoid;font-family:"Times New Roman",Times,serif;font-size:12pt}
+.cetak-hal .ttd-2 .ttd-blok{width:68mm}
+`;
+  document.head.appendChild(st);
+})();
+
+const ctTitik = (k = "") => `<span class="titik ${k}"></span>`;
+const ctIsi = (v, k = "") => (String(v || "").trim() ? esc(v) : ctTitik(k));
+const ctJamTeks = (j) => (j ? j.replace(":", ".") : "");
+const ctBagian = (d, o) => (d ? fmtWITA(d, o) : "");
+const ctTtdPengawas = () => `<div class="ttd-2">${[1, 2].map((n) => `<div class="ttd-blok">
+  <div>Pengawas ${n},</div><div class="ttd-ruang"></div><div>(.....................................)</div><div>NIP. ..............................</div></div>`).join("")}</div>`;
+
+async function rCetakUjian() {
+  await Promise.all([muatKelas(), muatMapel(), muatSiswa()]);
+  const kelas = [...S.kelas].sort((a, b) => urut(a.nama, b.nama));
+  if (!kelas.length) { konten().innerHTML = kosong("Belum ada kelas", "Daftar hadir mengambil siswa dari data kelas. Tambahkan kelas dan siswa di menu Data."); return; }
+  const pilih = new Set(); // id siswa terpilih (tetap tersimpan saat ganti kelas)
+  const siswaKelas = (kid) => S.siswa.filter((s) => s.kelas_id === kid && s.aktif !== false).sort((a, b) => urut(a.nama, b.nama));
+  const opsiKelas = (semua) => (semua ? '<option value="*">Semua kelas</option>' : "") + kelas.map((k) => `<option value="${k.id}">${esc(k.nama)}</option>`).join("");
+
+  konten().innerHTML = `
+    <div class="catatan"><b>Bisa dicetak kapan saja</b> — tidak perlu menunggu ujian atau bank soal aktif. Isian yang dikosongkan dicetak sebagai titik-titik untuk ditulis tangan.</div>
+
+    <div class="panel-mewah" style="max-width:880px;margin-bottom:1.2rem">
+      <div class="panel-kepala"><h3>Isian umum <small class="ket">(dipakai daftar hadir &amp; berita acara, semuanya boleh kosong)</small></h3></div>
+      <div class="baris2">
+        <label class="f">Mata pelajaran<input class="input" id="cu-mapel" list="cu-mapel-l" maxlength="100" autocomplete="off"><datalist id="cu-mapel-l">${S.mapel.map((m) => `<option value="${esc(m.nama)}"></option>`).join("")}</datalist></label>
+        <label class="f">Jenis ujian<input class="input" id="cu-jenis" maxlength="60" autocomplete="off" placeholder="mis. PAS Ganjil"></label>
+      </div>
+      <div class="baris2">
+        <label class="f">Hari / tanggal<input class="input" type="date" id="cu-tgl"></label>
+        <label class="f">Ruang<input class="input" id="cu-ruang" maxlength="40" autocomplete="off"></label>
+      </div>
+      <div class="baris2">
+        <label class="f">Jam mulai<input class="input" type="time" id="cu-mulai"></label>
+        <label class="f">Jam selesai<input class="input" type="time" id="cu-selesai"></label>
+      </div>
+    </div>
+
+    <div class="panel-mewah" style="max-width:880px;margin-bottom:1.2rem">
+      <div class="panel-kepala"><h3>Daftar hadir peserta ujian</h3></div>
+      <div class="f"><div class="sl-judul">Siapa yang dicetak</div>
+        <label style="display:flex;gap:.5rem;align-items:center;margin:.3rem 0"><input type="radio" name="dh-mode" value="kelas" checked> Per kelas <small class="ket">(satu kelas, atau semua kelas — satu halaman per kelas)</small></label>
+        <label style="display:flex;gap:.5rem;align-items:center;margin:.3rem 0"><input type="radio" name="dh-mode" value="siswa"> Siswa tertentu <small class="ket">(boleh lebih dari satu, boleh beda kelas)</small></label>
+      </div>
+      <label class="f" style="max-width:360px">Kelas<select class="pilih" id="dh-kelas">${opsiKelas(true)}</select></label>
+      <div id="dh-b-siswa" hidden>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.2rem 0 .5rem">
+          <button class="btn btn-kecil" type="button" id="dh-semua">Pilih semua di kelas ini</button>
+          <button class="btn btn-kecil" type="button" id="dh-kosong">Kosongkan pilihan</button>
+          <b id="dh-jml" style="margin-left:.4rem"></b>
+        </div>
+        <div id="dh-daftar" style="max-height:260px;overflow:auto;border:1px solid var(--garis);border-radius:10px;padding:.4rem .7rem;margin-bottom:.8rem"></div>
+      </div>
+      <button class="btn btn-primary" id="dh-cetak" type="button">Pratinjau &amp; cetak daftar hadir</button>
+    </div>
+
+    <div class="panel-mewah" style="max-width:880px">
+      <div class="panel-kepala"><h3>Berita acara ujian</h3></div>
+      <p class="ket">Mata pelajaran, jenis ujian, tanggal, jam, dan ruang diambil dari Isian umum di atas. Kelas, jumlah siswa, nama yang tidak hadir, dan catatan diisi tangan.</p>
+      <div class="baris2">
+        <label class="f">Kelas <small class="ket">(boleh kosong)</small><input class="input" id="ba-kelas" maxlength="30" autocomplete="off"></label>
+        <label class="f">Jumlah lembar<input class="input" type="number" id="ba-lembar" min="1" max="60" value="1"></label>
+      </div>
+      <button class="btn btn-primary" id="ba-cetak" type="button">Pratinjau &amp; cetak berita acara</button>
+    </div>`;
+
+  const q = (s) => konten().querySelector(s);
+  const mode = () => konten().querySelector('input[name="dh-mode"]:checked').value;
+  const hitung = () => { q("#dh-jml").textContent = `${pilih.size} siswa dipilih`; };
+  const gambarSiswa = () => {
+    const d = siswaKelas(q("#dh-kelas").value);
+    q("#dh-daftar").innerHTML = d.length ? d.map((s) => `<label style="display:flex;gap:.5rem;align-items:center;padding:.25rem 0">
+      <input type="checkbox" data-sid="${s.id}" ${pilih.has(s.id) ? "checked" : ""}> <span>${esc(s.nama)} <small class="ket">(${esc(s.username)})</small></span></label>`).join("")
+      : '<p class="ket">Tidak ada siswa di kelas ini.</p>';
+    hitung();
+  };
+  const atur = () => {
+    const sis = mode() === "siswa", sel = q("#dh-kelas"), lama = sel.value;
+    sel.innerHTML = opsiKelas(!sis);
+    if ([...sel.options].some((o) => o.value === lama)) sel.value = lama;
+    q("#dh-b-siswa").hidden = !sis;
+    if (sis) gambarSiswa();
+  };
+  konten().querySelectorAll('input[name="dh-mode"]').forEach((r) => (r.onchange = atur));
+  q("#dh-kelas").onchange = () => { if (mode() === "siswa") gambarSiswa(); };
+  q("#dh-daftar").addEventListener("change", (e) => {
+    const id = e.target.dataset && e.target.dataset.sid;
+    if (!id) return;
+    if (e.target.checked) pilih.add(id); else pilih.delete(id);
+    hitung();
+  });
+  q("#dh-semua").onclick = () => { siswaKelas(q("#dh-kelas").value).forEach((s) => pilih.add(s.id)); gambarSiswa(); };
+  q("#dh-kosong").onclick = () => { pilih.clear(); gambarSiswa(); };
+
+  const infoUmum = () => ({
+    mapel: q("#cu-mapel").value.trim(), jenis: q("#cu-jenis").value.trim(), ruang: q("#cu-ruang").value.trim(),
+    tgl: q("#cu-tgl").value ? new Date(q("#cu-tgl").value + "T12:00:00+08:00") : null,
+    mulai: q("#cu-mulai").value, selesai: q("#cu-selesai").value,
+  });
+  const siapkan = async (bangun) => { try { ctPratinjau(await bangun()); } catch (e) { toast(e.message || String(e), "error"); } };
+  const dasar = async (info) => { const pg = await ctPengaturan(); return { pg, info, urlKiri: pgUrlLogo(pg.logo_kiri), urlKanan: pgUrlLogo(pg.logo_kanan), tgl: witaKeInput(null).slice(0, 10) }; };
+
+  q("#dh-cetak").onclick = () => siapkan(async () => {
+    const info = infoUmum();
+    let ids;
+    if (mode() === "siswa") {
+      ids = S.siswa.filter((s) => pilih.has(s.id));
+      if (!ids.length) throw new Error("Centang minimal satu siswa dulu.");
+    } else {
+      const kid = q("#dh-kelas").value;
+      ids = S.siswa.filter((s) => s.aktif !== false && (kid === "*" || s.kelas_id === kid));
+    }
+    const sections = kelas.map((k) => ({ kelasNama: k.nama, rows: ids.filter((s) => s.kelas_id === k.id).sort((a, b) => urut(a.nama, b.nama)) })).filter((sc) => sc.rows.length);
+    if (!sections.length) throw new Error("Tidak ada siswa pada pilihan ini.");
+    return { ...(await dasar(info)), mode: "hadir", sections, render: ctRenderHadir,
+      ringkas: `Daftar hadir · ${sections.map((sc) => sc.kelasNama).join(", ")} · ${sections.reduce((n, sc) => n + sc.rows.length, 0)} siswa` };
+  });
+  q("#ba-cetak").onclick = () => siapkan(async () => {
+    const lembar = Math.max(1, Math.min(60, +q("#ba-lembar").value || 1));
+    return { ...(await dasar(infoUmum())), mode: "ba", lembar, kelasTeks: q("#ba-kelas").value.trim(), render: ctRenderBA,
+      ringkas: `Berita acara ujian · ${lembar} lembar` };
+  });
+}
+
+function ctRenderHadir(P) {
+  const i = P.info;
+  const waktu = i.mulai || i.selesai ? `${ctJamTeks(i.mulai) || "......"} - ${ctJamTeks(i.selesai) || "......"} WITA` : "";
+  return P.sections.map((sc) => `<section class="cetak-hal">
+    ${kopHtml(P.pg, P.urlKiri, P.urlKanan)}
+    <h2 class="cetak-judul">DAFTAR HADIR PESERTA UJIAN</h2>
+    <table class="cetak-bio">
+      <tr><td>Jenis Ujian</td><td>:</td><td>${i.jenis ? `<b>${esc(i.jenis)}</b>` : ctTitik("l")}</td></tr>
+      <tr><td>Mata Pelajaran</td><td>:</td><td>${i.mapel ? `<b>${esc(i.mapel)}</b>` : ctTitik("l")}</td></tr>
+      <tr><td>Hari / Tanggal</td><td>:</td><td>${i.tgl ? esc(fmtWITA(i.tgl, { weekday: "long", day: "numeric", month: "long", year: "numeric" })) : ctTitik("l")}</td></tr>
+      <tr><td>Waktu</td><td>:</td><td>${waktu ? esc(waktu) : ctTitik("s") + " - " + ctTitik("s") + " WITA"}</td></tr>
+      <tr><td>Kelas</td><td>:</td><td><b>${esc(sc.kelasNama)}</b></td></tr>
+      <tr><td>Ruang</td><td>:</td><td>${ctIsi(i.ruang, "l")}</td></tr>
+    </table>
+    <table class="cetak-tabel hadir">
+      <colgroup><col style="width:7%"><col style="width:35%"><col style="width:7%"><col style="width:17%"><col style="width:17%"><col style="width:17%"></colgroup>
+      <thead><tr><th>No.</th><th>Nama / NISN</th><th>L/P</th><th colspan="2">Tanda Tangan</th><th>Ket.</th></tr></thead>
+      <tbody>${sc.rows.map((s, n) => `<tr>
+        <td class="c">${n + 1}</td>
+        <td class="nm"><div>${esc(s.nama)}</div><div class="nisn">${esc(s.username)}</div></td>
+        <td class="c">${esc(s.jenis_kelamin || "-")}</td>
+        <td class="tt">${n % 2 === 0 ? n + 1 + "." : ""}</td><td class="tt">${n % 2 === 1 ? n + 1 + "." : ""}</td><td></td></tr>`).join("")}</tbody>
+    </table>
+    <div class="cetak-ringkas">Jumlah siswa: <b>${sc.rows.length}</b> &nbsp;|&nbsp; Hadir: ........ &nbsp;|&nbsp; Tidak hadir: ........</div>
+    ${ctTtdPengawas()}
+  </section>`).join("");
+}
+
+function ctRenderBA(P) {
+  const i = P.info, t = ctTitik;
+  const hari = ctBagian(i.tgl, { weekday: "long" }), tg = ctBagian(i.tgl, { day: "numeric" }),
+    bln = ctBagian(i.tgl, { month: "long" }), thn = ctBagian(i.tgl, { year: "numeric" });
+  const v = (x, k) => (x ? `<b>${esc(x)}</b>` : t(k));
+  const lembar = () => `<section class="cetak-hal">
+    ${kopHtml(P.pg, P.urlKiri, P.urlKanan)}
+    <h2 class="cetak-judul">BERITA ACARA PELAKSANAAN UJIAN</h2>
+    <p class="ba-teks">Pada hari ini ${v(hari)} tanggal ${v(tg, "s")} bulan ${v(bln)} tahun ${v(thn, "s")}, telah dilaksanakan ujian ${v(i.jenis)} mata pelajaran ${v(i.mapel, "l")} mulai pukul ${v(ctJamTeks(i.mulai), "s")} sampai dengan pukul ${v(ctJamTeks(i.selesai), "s")} WITA, bertempat di ruang ${v(i.ruang)} untuk kelas ${v(P.kelasTeks, "s")}, dengan keterangan sebagai berikut:</p>
+    <div class="ba-no"><div>1.</div><div>Jumlah peserta seharusnya : ${t("s")} siswa</div>
+      <div>2.</div><div>Jumlah peserta hadir : ${t("s")} siswa</div>
+      <div>3.</div><div>Jumlah peserta tidak hadir : ${t("s")} siswa</div></div>
+    <p class="ba-teks" style="margin:2mm 0 1mm">Nama peserta yang tidak hadir:</p>
+    <table class="cetak-tabel hadir ba"><colgroup><col style="width:8%"><col><col style="width:16%"><col style="width:26%"></colgroup>
+      <thead><tr><th>No.</th><th>Nama Siswa</th><th>Kelas</th><th>Alasan (S / I / A)</th></tr></thead>
+      <tbody>${[1, 2, 3, 4, 5].map((n) => `<tr><td class="c">${n}</td><td></td><td></td><td></td></tr>`).join("")}</tbody></table>
+    <p class="ba-teks" style="margin:3mm 0 0">Catatan selama pelaksanaan ujian:</p>
+    <div class="baris-titik"></div><div class="baris-titik"></div><div class="baris-titik"></div><div class="baris-titik"></div>
+    <p class="ba-teks" style="margin-top:3mm">Demikian berita acara ini dibuat dengan sebenarnya untuk dipergunakan sebagaimana mestinya.</p>
+    ${ctTtdPengawas()}
+  </section>`;
+  return Array.from({ length: P.lembar || 1 }, lembar).join("");
+}
