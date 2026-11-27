@@ -721,6 +721,25 @@ function ctPratinjau(P) {
 .cetak-hal .ba-no{display:grid;grid-template-columns:8mm 1fr;line-height:1.9;font-family:"Times New Roman",Times,serif;font-size:12pt}
 .cetak-hal .ttd-2{margin-top:8mm;display:flex;justify-content:space-between;break-inside:avoid;font-family:"Times New Roman",Times,serif;font-size:12pt}
 .cetak-hal .ttd-2 .ttd-blok{width:68mm}
+.cetak-hal .tk-kartu{box-sizing:border-box;height:128mm;border:.35mm solid #000;border-radius:2mm;padding:3mm 5mm;overflow:hidden;font-size:9pt;line-height:1.28;break-inside:avoid}
+.cetak-hal .tk-kartu .kop{gap:2mm;padding-bottom:1.5mm;margin-bottom:2mm}
+.cetak-hal .tk-kartu .kop-logo{width:13mm;height:13mm}
+.cetak-hal .tk-kartu .kop-1{font-size:8pt}.cetak-hal .tk-kartu .kop-2{font-size:9pt}.cetak-hal .tk-kartu .kop-3{font-size:10.5pt}.cetak-hal .tk-kartu .kop-4{font-size:7pt}
+.cetak-hal .tk-kartu.s2{font-size:8.3pt}.cetak-hal .tk-kartu.s3{font-size:7.6pt}.cetak-hal .tk-kartu.s4{font-size:7pt}
+.cetak-hal .tk-judul{font-size:12pt;margin:0 0 2mm}
+.cetak-hal .tk-atas{display:grid;grid-template-columns:1fr 62mm;gap:4mm;align-items:center;margin-bottom:2mm}
+.cetak-hal .tk-r{display:grid;grid-template-columns:27mm 3mm 1fr}
+.cetak-hal .tk-token{border:1.1mm double #000;border-radius:2mm;text-align:center;padding:1.5mm 2mm}
+.cetak-hal .tk-token small{display:block;font-size:8pt;font-weight:700;letter-spacing:.2em}
+.cetak-hal .tk-kode{font-family:Consolas,"Courier New",monospace;font-weight:800;font-size:26pt;letter-spacing:1.2mm;line-height:1.25;overflow-wrap:anywhere}
+.cetak-hal .tk-sub{font-weight:700;margin:1.5mm 0 .6mm;font-size:9.5pt;border-bottom:.2mm solid #000}
+.cetak-hal .tk-ol{margin:0;padding-left:4.5mm}
+.cetak-hal .tk-ol li{margin:0 0 .5mm}
+.cetak-hal .tk-dua{column-count:2;column-gap:6mm}
+.cetak-hal .tk-dua li{break-inside:avoid}
+.cetak-hal .tk-foot{margin-top:1.5mm;font-size:8pt;font-style:italic;text-align:center}
+.cetak-hal .tk-potong{height:7mm;display:flex;align-items:flex-end;justify-content:center;border-bottom:.3mm dashed #000;font-size:7.5pt;color:#444}
+.cetak-hal .tk-potong span{background:#fff;padding:0 2mm;transform:translateY(50%)}
 `;
   document.head.appendChild(st);
 })();
@@ -744,7 +763,7 @@ async function rCetakUjian() {
     <div class="catatan"><b>Bisa dicetak kapan saja</b> — tidak perlu menunggu ujian atau bank soal aktif. Isian yang dikosongkan dicetak sebagai titik-titik untuk ditulis tangan.</div>
 
     <div class="panel-mewah" style="max-width:880px;margin-bottom:1.2rem">
-      <div class="panel-kepala"><h3>Isian umum <small class="ket">(dipakai daftar hadir &amp; berita acara, semuanya boleh kosong)</small></h3></div>
+      <div class="panel-kepala"><h3>Isian umum <small class="ket">(dipakai daftar hadir, berita acara &amp; token ujian, semuanya boleh kosong)</small></h3></div>
       <div class="baris2">
         <label class="f">Mata pelajaran<input class="input" id="cu-mapel" list="cu-mapel-l" maxlength="100" autocomplete="off"><datalist id="cu-mapel-l">${S.mapel.map((m) => `<option value="${esc(m.nama)}"></option>`).join("")}</datalist></label>
         <label class="f">Jenis ujian<input class="input" id="cu-jenis" maxlength="60" autocomplete="off" placeholder="mis. PAS Ganjil"></label>
@@ -785,6 +804,22 @@ async function rCetakUjian() {
         <label class="f">Jumlah lembar<input class="input" type="number" id="ba-lembar" min="1" max="60" value="1"></label>
       </div>
       <button class="btn btn-primary" id="ba-cetak" type="button">Pratinjau &amp; cetak berita acara</button>
+    </div>
+
+    <div class="panel-mewah" style="max-width:880px;margin-top:1.2rem">
+      <div class="panel-kepala"><h3>Token ujian</h3></div>
+      <p class="ket">Satu lembar A4 berisi <b>2 lembar token</b> (atas dan bawah, sama persis) yang tinggal digunting. Token berlaku <b>universal</b>: Anda mengetik sendiri tokennya di sini. Mata pelajaran, jenis ujian, tanggal, jam, dan ruang diambil dari Isian umum di atas.</p>
+      <div class="baris2">
+        <label class="f">Token ujian <small class="ket">(boleh kosong, dicetak titik-titik)</small><input class="input mono" id="tk-kode" maxlength="30" autocomplete="off" spellcheck="false" style="text-transform:uppercase;font-weight:700;letter-spacing:.12em"></label>
+        <label class="f">Jumlah lembar A4<input class="input" type="number" id="tk-lembar" min="1" max="60" value="1"></label>
+      </div>
+      <p class="ket" style="margin-top:-.3rem">Saran: hindari huruf dan angka yang mirip (O dengan 0, I dengan 1) agar mudah diketik siswa.</p>
+      <label class="f">Tata tertib ujian <small class="ket">(satu aturan per baris, maksimal 10 baris; disimpan di perangkat ini)</small>
+        <textarea class="input" id="tk-aturan" rows="9" style="line-height:1.4"></textarea></label>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-primary" id="tk-cetak" type="button">Pratinjau &amp; cetak token</button>
+        <button class="btn" id="tk-reset" type="button">Kembalikan tata tertib standar</button>
+      </div>
     </div>`;
 
   const q = (s) => konten().querySelector(s);
@@ -843,6 +878,86 @@ async function rCetakUjian() {
     return { ...(await dasar(infoUmum())), mode: "ba", lembar, kelasTeks: q("#ba-kelas").value.trim(), render: ctRenderBA,
       ringkas: `Berita acara ujian · ${lembar} lembar` };
   });
+
+  // ---- Token ujian (satu A4 = 2 lembar token) ----
+  const simpanAturan = (t) => { try { localStorage.setItem(CT_KUNCI_ATURAN_TOKEN, t); } catch (_) { /* penyimpanan tidak tersedia */ } };
+  let aturanAwal = CT_ATURAN_TOKEN_STANDAR.join("\n");
+  try { aturanAwal = localStorage.getItem(CT_KUNCI_ATURAN_TOKEN) || aturanAwal; } catch (_) { /* abaikan */ }
+  q("#tk-aturan").value = aturanAwal;
+  q("#tk-reset").onclick = () => { q("#tk-aturan").value = CT_ATURAN_TOKEN_STANDAR.join("\n"); simpanAturan(""); };
+  q("#tk-cetak").onclick = () => siapkan(async () => {
+    const lembar = Math.max(1, Math.min(60, +q("#tk-lembar").value || 1));
+    const teksAturan = q("#tk-aturan").value;
+    const aturan = teksAturan.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 10);
+    if (!aturan.length) throw new Error("Isi minimal satu tata tertib.");
+    simpanAturan(teksAturan);
+    const token = q("#tk-kode").value.trim().toUpperCase();
+    const P = { ...(await dasar(infoUmum())), mode: "token", token, lembar, aturan, render: ctRenderToken,
+      ringkas: `Token ujian · ${lembar} lembar A4 (${lembar * 2} token)` };
+    P.ukuran = ctTokenUkuran(P);
+    if (P.ukuran === null) throw new Error("Tata tertib terlalu panjang sehingga tidak muat di setengah halaman A4. Ringkas beberapa aturan atau kurangi jumlahnya.");
+    return P;
+  });
+}
+
+const CT_KUNCI_ATURAN_TOKEN = "ct_token_aturan";
+const CT_TOKEN_UKURAN = ["", "s2", "s3", "s4"];   // 9pt -> 8.3pt -> 7.6pt -> 7pt (dipilih otomatis agar muat)
+const CT_ATURAN_TOKEN_STANDAR = [
+  "Kerjakan ujian dengan jujur dan mandiri. Dilarang bekerja sama, menyontek, atau membuka sumber lain.",
+  "Gunakan akun sendiri. Jangan meminjamkan atau meminjam kartu login dan password teman.",
+  "Hadir dan mulai tepat waktu sesuai jadwal ujian.",
+  "Ikuti arahan pengawas selama ujian berlangsung.",
+  "Dilarang menyebarkan soal, jawaban, atau token ujian dalam bentuk apa pun.",
+  "Dilarang berpindah aplikasi/tab, membuka layar terbagi, serta menyalin dan menempel soal. Pelanggaran dicatat otomatis oleh sistem.",
+  "Bila perangkat atau koneksi bermasalah, segera lapor ke pengawas dan jangan menutup halaman ujian.",
+  "Periksa jawaban, lalu tekan Kumpulkan Ujian. Jawaban tidak dapat diubah setelah dikumpulkan.",
+];
+
+// Mengukur langsung (di perangkat ini) ukuran huruf terbesar yang membuat satu token muat di setengah A4.
+function ctTokenUkuran(P) {
+  const w = document.createElement("div");
+  w.className = "cetak-hal";
+  w.style.cssText = "position:fixed;left:-9999px;top:0;width:180mm;padding:0;min-height:0;box-shadow:none;visibility:hidden";
+  document.body.appendChild(w);
+  try {
+    for (const u of CT_TOKEN_UKURAN) {
+      w.innerHTML = ctRenderToken({ ...P, lembar: 1, ukuran: u }).replace(/<section[^>]*>|<\/section>/g, "");
+      const k = w.querySelector(".tk-kartu");
+      if (k && k.scrollHeight <= k.clientHeight + 1) return u;
+    }
+  } finally { w.remove(); }
+  return null;
+}
+
+function ctRenderToken(P) {
+  const i = P.info;
+  const tgl = i.tgl ? esc(fmtWITA(i.tgl, { weekday: "long", day: "numeric", month: "long", year: "numeric" })) : ctTitik("l");
+  const waktu = i.mulai || i.selesai ? esc(`${ctJamTeks(i.mulai) || "......"} - ${ctJamTeks(i.selesai) || "......"} WITA`) : `${ctTitik("s")} - ${ctTitik("s")} WITA`;
+  const baris = (k, v) => `<div class="tk-r"><span>${k}</span><span>:</span><b>${v}</b></div>`;
+  const kartu = () => `<div class="tk-kartu ${P.ukuran || ""}">
+    ${kopHtml(P.pg, P.urlKiri, P.urlKanan)}
+    <h2 class="cetak-judul tk-judul">TOKEN UJIAN</h2>
+    <div class="tk-atas">
+      <div class="tk-info">
+        ${baris("Mata Pelajaran", i.mapel ? esc(i.mapel) : ctTitik("l"))}
+        ${baris("Jenis Ujian", i.jenis ? esc(i.jenis) : ctTitik("l"))}
+        ${baris("Hari / Tanggal", tgl)}
+        ${baris("Waktu", waktu)}
+        ${baris("Ruang", i.ruang ? esc(i.ruang) : ctTitik("l"))}
+      </div>
+      <div class="tk-token"><small>TOKEN</small><div class="tk-kode">${P.token ? esc(P.token) : ctTitik("l")}</div></div>
+    </div>
+    <div class="tk-sub">Cara memakai token</div>
+    <ol class="tk-ol">
+      <li>Masuk ke aplikasi ujian dengan akun sendiri, buka menu Ujian, lalu pilih ujian yang sedang berlangsung.</li>
+      <li>Pada kotak <b>Token Ujian</b>, ketik token di atas persis seperti tertulis, lalu tekan <b>Mulai Kerjakan Sekarang</b>. Waktu ujian langsung berjalan.</li>
+    </ol>
+    <div class="tk-sub">Tata tertib ujian</div>
+    <ol class="tk-ol tk-dua">${P.aturan.map((a) => `<li>${esc(a)}</li>`).join("")}</ol>
+    <div class="tk-foot">Token bersifat rahasia dan dibagikan oleh pengawas ruang. Sanksi pelanggaran mengikuti ketentuan sekolah.</div>
+  </div>`;
+  const halaman = () => `<section class="cetak-hal tk-hal">${kartu()}<div class="tk-potong"><span>&#9986; potong di sini</span></div>${kartu()}</section>`;
+  return Array.from({ length: P.lembar || 1 }, halaman).join("");
 }
 
 function ctRenderHadir(P) {
@@ -860,13 +975,14 @@ function ctRenderHadir(P) {
       <tr><td>Ruang</td><td>:</td><td>${ctIsi(i.ruang, "l")}</td></tr>
     </table>
     <table class="cetak-tabel hadir">
-      <colgroup><col style="width:7%"><col style="width:35%"><col style="width:7%"><col style="width:17%"><col style="width:17%"><col style="width:17%"></colgroup>
-      <thead><tr><th>No.</th><th>Nama / NISN</th><th>L/P</th><th colspan="2">Tanda Tangan</th><th>Ket.</th></tr></thead>
+      <colgroup><col style="width:6%"><col style="width:27%"><col style="width:14%"><col style="width:9%"><col style="width:26%"><col style="width:18%"></colgroup>
+      <thead><tr><th>No.</th><th>Nama Siswa</th><th>NISN</th><th>Kelas</th><th>Tanda Tangan</th><th>Keterangan</th></tr></thead>
       <tbody>${sc.rows.map((s, n) => `<tr>
         <td class="c">${n + 1}</td>
-        <td class="nm"><div>${esc(s.nama)}</div><div class="nisn">${esc(s.username)}</div></td>
-        <td class="c">${esc(s.jenis_kelamin || "-")}</td>
-        <td class="tt">${n % 2 === 0 ? n + 1 + "." : ""}</td><td class="tt">${n % 2 === 1 ? n + 1 + "." : ""}</td><td></td></tr>`).join("")}</tbody>
+        <td class="nm"><div>${esc(s.nama)}</div></td>
+        <td class="c">${esc(s.username)}</td>
+        <td class="c">${esc(sc.kelasNama)}</td>
+        <td class="tt"></td><td></td></tr>`).join("")}</tbody>
     </table>
     <div class="cetak-ringkas">Jumlah siswa: <b>${sc.rows.length}</b> &nbsp;|&nbsp; Hadir: ........ &nbsp;|&nbsp; Tidak hadir: ........</div>
     ${ctTtdPengawas()}
