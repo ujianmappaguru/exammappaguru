@@ -487,6 +487,7 @@ async function slDetail(id) {
           ${Object.entries(JENIS).map(([k, v]) => `<option value="${k}" ${SL.jenis === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
       </div>
       <div class="alat-kanan">
+        <button class="btn" data-aksi="ekspor" title="Unduh soal sebagai PDF atau Word">Ekspor Soal</button>
         <button class="btn" data-aksi="preview" title="Lihat soal seperti tampilan siswa saat ujian">Preview Soal</button>
         <button class="btn" data-aksi="impor">Impor dari Word</button>
         <button class="btn btn-primary" data-aksi="tambah">Tambah soal</button>
@@ -513,6 +514,7 @@ async function slDetail(id) {
     const a = b.dataset.aksi, sid = b.dataset.id;
     if (a === "tambah") slModal(null);
     if (a === "impor") slImpor();
+    if (a === "ekspor") slEkspor(SL.bank);
     if (a === "preview") slPreview(SL.bank);
     if (a === "lihat") slLihat(sid);
     if (a === "ubah") slUbah(sid);

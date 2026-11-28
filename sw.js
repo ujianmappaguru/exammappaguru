@@ -4,11 +4,11 @@
 //   CDN, dan semua permintaan non-GET TIDAK disentuh, jadi data ujian selalu langsung ke server.
 // - Jaringan dulu supaya perubahan kode langsung terpakai (tidak terjebak versi lama).
 // - Naikkan VERSI bila ingin membuang cache lama.
-const VERSI = "ujian-v7";
+const VERSI = "ujian-v8";
 const INTI = [
   "./", "index.html", "siswa.html", "admin.html", "guru.html",
   "style.css", "config.js", "common.js", "anticurang.js", "pwa.js",
-  "siswa.js", "admin.js", "soal.js", "hasil.js", "penilaian.js", "monitor.js", "cetak.js", "panduan.js",
+  "siswa.js", "admin.js", "soal.js", "eksporsoal.js", "hasil.js", "penilaian.js", "monitor.js", "cetak.js", "panduan.js",
   "manifest.webmanifest", "icon-192.png", "icon-512.png", "favicon-64.png",
 ];
 
