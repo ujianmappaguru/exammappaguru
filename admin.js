@@ -1644,6 +1644,7 @@ async function rBerandaGuru() {
 // ---------------------------------------------------------------------
 const MENU_GURU = [
   { key: "beranda", judul: "Beranda", sub: "Ringkasan tugas mengajar Anda", ikon: "🏠", render: () => rBerandaGuruBaru() },
+  { key: "jadwal", judul: "Jadwal Ujian", sub: "Jadwal ujian yang ditetapkan admin untuk guru & siswa", ikon: "📅", render: () => rJadwalUjian() },
   { key: "soal", judul: "Bank Soal", sub: "Isi & kelola soal ujian", ikon: "📝", render: () => rSoal() },
   { key: "hasil", judul: "Hasil Ujian", sub: "Progres ujian, hasil & penilaian esai", ikon: "📊", render: () => rHasil() },
   { key: "monitor", judul: "Monitor Ujian", sub: "Pantau siswa selama ujian berlangsung", ikon: "📡", render: () => rMonitor() },
@@ -1653,6 +1654,7 @@ const MENU_GURU = [
 const MENU_UTAMA = [
   { key: "beranda", judul: "Beranda", sub: "Ringkasan & kendali utama", ikon: "🏠", render: () => rBerandaBaru() },
   { key: "data", judul: "Data", sub: "Kelas, mata pelajaran, guru & siswa", ikon: "🗂️", render: rData },
+  { key: "jadwal", judul: "Jadwal Ujian", sub: "Atur jadwal ujian: hari, tanggal, mapel, guru & waktu", ikon: "📅", render: () => rJadwalUjian() },
   { key: "soal", judul: "Bank Soal", sub: "Kelola bank & butir soal ujian", ikon: "📝", render: () => rSoal() },
   { key: "hasil", judul: "Hasil Ujian", sub: "Rekap nilai & status pengerjaan siswa", ikon: "📊", render: () => rHasil() },
   { key: "monitor", judul: "Monitor Ujian", sub: "Pantau siswa selama ujian berlangsung", ikon: "📡", render: () => rMonitor() },

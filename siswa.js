@@ -1755,6 +1755,7 @@ async function rHasil() {
 // ---------------------------------------------------------------------
 const MENU_SISWA = [
   { key: "dashboard", judul: "Dashboard", sub: "Identitas peserta & ringkasan akademik", ikon: "🏠", render: rDashboard },
+  { key: "jadwal", judul: "Jadwal Ujian", sub: "Jadwal ujian untuk kelas Anda", ikon: "📅", render: () => rJadwalUjian() },
   { key: "ujian", judul: "UJIAN", sub: "Daftar paket ujian & ruang pengerjaan soal", ikon: "📝", render: rUjian, lencanaId: "lencana-ujian" },
   { key: "hasil", judul: "Hasil Ujian", sub: "Rekap nilai & riwayat ujian selesai", ikon: "🏆", render: rHasil },
   { key: "panduan", judul: "Panduan & Tata Tertib", sub: "Cara memakai aplikasi, tata cara & tata tertib ujian", ikon: "📖", render: () => rPanduan() },
