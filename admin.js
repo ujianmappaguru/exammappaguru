@@ -1663,6 +1663,7 @@ const MENU_UTAMA = [
 ];
 const MENU_KHUSUS = [
   { key: "kartu", judul: "Kartu Login", sub: "Cetak & unduh kartu peserta", ikon: "🪪", render: rKartu },
+  { key: "peta", judul: "Peta Pelanggaran", sub: "Analisis pelanggaran anti curang per kelas, siswa & mapel", ikon: "🗺️", render: () => rPeta() },
   { key: "pengaturan", judul: "Pengaturan", sub: "Kop surat & data sekolah untuk cetakan", ikon: "⚙️", render: () => rPengaturan() },
   { key: "log", judul: "Aktifitas", sub: "Riwayat aktifitas & audit sistem", ikon: "⚡", render: rLog },
 ];
