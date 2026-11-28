@@ -1943,12 +1943,16 @@ body:not(.mode-cbt) .app{grid-template-columns:min(calc(260px * var(--zoom-app))
 /* ---------- Panduan & Tata Tertib ---------- */
 .pdn-hero{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;margin-bottom:1.1rem;padding:1.4rem 1.5rem;
   border-radius:18px;color:#fff;background:linear-gradient(135deg,var(--navy),var(--navy-2));border-left:6px solid var(--amber)}
+.pdn-hero-aksi{display:flex;flex-wrap:wrap;gap:.6rem}
 .pdn-hero h2{font-size:clamp(1.3rem,3vw,1.8rem);margin:.35rem 0 .3rem}
 .pdn-hero p{margin:0;color:rgba(255,255,255,.82);max-width:58ch}
 .pdn-pill{display:inline-block;padding:.15rem .7rem;border-radius:999px;background:rgba(255,255,255,.16);font-size:.78rem;font-weight:700}
-.pdn-daftar{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:1.1rem}
+.pdn-daftar{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem;margin-bottom:1.1rem}
 .pdn-chip{border:1px solid var(--garis-2);background:var(--putih);color:var(--tinta);border-radius:999px;padding:.4rem .85rem;
-  font:600 .85rem var(--f-judul,inherit);cursor:pointer;min-height:38px}
+  font:600 .85rem var(--f-judul,inherit);cursor:pointer;min-height:38px;text-align:center;
+  display:inline-flex;align-items:center;justify-content:center;gap:.3rem}
+/* HP: dua kolom sama lebar; tombol ganjil terakhir melebar penuh agar seimbang */
+@media (max-width:640px){.pdn-chip{flex:1 1 calc(50% - .25rem);padding:.5rem .6rem;line-height:1.25}}
 .pdn-chip:hover{border-color:var(--biru);color:var(--biru);background:var(--biru-lembut)}
 .pdn-isi{display:flex;flex-direction:column;gap:.7rem;margin-bottom:1.1rem}
 .pdn-bagian{background:var(--putih);border:1px solid var(--garis);border-radius:16px;box-shadow:var(--bayang-s);overflow:hidden;scroll-margin-top:1rem}

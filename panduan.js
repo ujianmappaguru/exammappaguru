@@ -9,6 +9,17 @@
 // =====================================================================
 const PDN_KONTAK = { nama: "Panitia Ujian", hp: "085259259767" };
 
+// Buku panduan PDF (Google Drive). Ganti id bila berkas dipindah.
+// "peran" = panel yang dapat melihat. Admin melihat kedua PDF.
+const PDN_PDF = [
+  { kunci: "siswa", label: "Panduan Siswa", id: "1-3QB7lLI7thuJgU3jrEfL-i3bZaskyLI", peran: ["siswa", "admin"] },
+  { kunci: "staf", label: "Panduan Guru & Admin", id: "1mELVVrgP57vLn7gSZWT8qGt8Eb3bmWqa", peran: ["guru", "admin"] },
+];
+const pdnDaftarPdf = (peran) => PDN_PDF.filter((x) => x.peran.includes(peran));
+const pdnUrlLihat = (x) => `https://drive.google.com/file/d/${x.id}/view?usp=sharing`;
+const pdnUrlTampil = (x) => `https://drive.google.com/file/d/${x.id}/preview`;
+const pdnUrlUnduh = (x) => `https://drive.google.com/uc?export=download&id=${x.id}`;
+
 const pdnPeran = () => (typeof PANEL !== "undefined" ? PANEL : "siswa"); // "siswa" | "guru" | "admin"
 const pdnWa = () => "https://wa.me/62" + PDN_KONTAK.hp.replace(/\D/g, "").replace(/^0/, "");
 const pdnHpTampil = () => PDN_KONTAK.hp.replace(/(\d{4})(\d{4})(\d+)/, "$1-$2-$3");
@@ -56,6 +67,22 @@ function pdnTentang(peran) {
       "Dapat dibuka dari HP, tablet, maupun laptop dengan koneksi internet.",
       "Dilengkapi pengawasan anti-curang dan pemantauan ujian secara langsung.",
     ])}`;
+}
+
+// Buku panduan PDF dalam popup (satu layar). Tombol tab baru/unduh tersedia bila PDF tidak terbaca.
+function pdnBukaPdf(kunci) {
+  const x = PDN_PDF.find((v) => v.kunci === kunci);
+  if (!x || !x.peran.includes(pdnPeran())) return;
+  const m = tampilModal("📄 " + x.label + " (PDF)", `
+    <iframe src="${pdnUrlTampil(x)}" title="${esc(x.label)}" allow="fullscreen"
+      style="display:block;width:100%;height:70vh;height:70dvh;min-height:320px;border:0;background:#f1f4f9"></iframe>`, { lebar: "lebar" });
+  m.body.style.padding = "0";
+  m.body.style.overflow = "hidden";
+  m.setAksi([
+    { label: "↗ Buka di Tab Baru", kelas: "btn-primary", tutup: false, onClick: () => { window.open(pdnUrlLihat(x), "_blank", "noopener"); } },
+    { label: "⬇ Unduh", tutup: false, onClick: () => { window.open(pdnUrlUnduh(x), "_blank", "noopener"); } },
+    { label: "Tutup" },
+  ]);
 }
 
 function pdnSiswa(cfg) {
@@ -226,6 +253,7 @@ async function rPanduan() {
     { id: "tentang", ikon: "ℹ️", judul: "Tentang Aplikasi", isi: pdnTentang(peran) },
     ...(peran === "siswa" ? pdnSiswa(cfg) : peran === "guru" ? pdnGuru(cfg) : pdnAdmin(cfg)),
   ];
+  const pdfPeran = pdnDaftarPdf(peran);
   const label = { siswa: "Peserta Didik", guru: "Guru", admin: "Administrator" }[peran];
 
   konten().innerHTML = `
@@ -235,7 +263,10 @@ async function rPanduan() {
         <h2>Panduan &amp; Tata Tertib Ujian</h2>
         <p>Baca sebelum ujian dimulai. Panduan ini berisi cara memakai aplikasi, tata cara ujian, dan aturan yang harus dipatuhi.</p>
       </div>
-      <a class="btn btn-amber" href="${pdnWa()}" target="_blank" rel="noopener">Hubungi Panitia</a>
+      <div class="pdn-hero-aksi">
+        ${pdfPeran.map((x) => `<button type="button" class="btn btn-glass" data-pdn-pdf="${x.kunci}">📄 ${pdfPeran.length > 1 ? esc(x.label) + " (PDF)" : "Baca Panduan PDF"}</button>`).join("")}
+        <a class="btn btn-amber" href="${pdnWa()}" target="_blank" rel="noopener">Hubungi Panitia</a>
+      </div>
     </section>
 
     <nav class="pdn-daftar" aria-label="Daftar isi">
@@ -261,6 +292,8 @@ async function rPanduan() {
     </section>`;
 
   konten().onclick = (e) => {
+    const p = e.target.closest("[data-pdn-pdf]");
+    if (p) { pdnBukaPdf(p.dataset.pdnPdf); return; }
     const b = e.target.closest("[data-pdn-ke]"); if (!b) return;
     const el = document.getElementById("pdn-" + b.dataset.pdnKe); if (!el) return;
     el.open = true;
